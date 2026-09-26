@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.source_ref || github.ref }}
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -31,13 +33,16 @@ jobs:
 
       - name: Create source file
         env:
+          SOURCE_REF: ${{ github.event.client_payload.source_ref || '' }}
           SOURCE_B64: ${{ github.event.client_payload.source_b64 || '' }}
           SOURCE_RAW: ${{ github.event.client_payload.source || inputs.source_code || '' }}
           FILENAME_IN: ${{ github.event.client_payload.filename || inputs.filename || 'libexample' }}
         run: |
           set -euo pipefail
           mkdir -p src
-          if [ -n "$SOURCE_B64" ]; then
+          if [ -n "$SOURCE_REF" ]; then
+            test -s src/lib.m || { echo "ERROR: source commit does not contain src/lib.m" >&2; exit 1; }
+          elif [ -n "$SOURCE_B64" ]; then
             echo "$SOURCE_B64" | base64 -d > src/lib.m
           elif [ -n "$SOURCE_RAW" ]; then
             printf '%s' "$SOURCE_RAW" > src/lib.m
@@ -48,6 +53,7 @@ jobs:
           FILENAME=$(printf '%s' "$FILENAME_IN" | tr -cd '[:alnum:]_-')
           [ -n "$FILENAME" ] || FILENAME="libexample"
           echo "FILENAME=$FILENAME" >> "$GITHUB_ENV"
+          echo "Source size: $(wc -c < src/lib.m) bytes"
           cat -n src/lib.m
 
       - name: Compile arm64 iOS dylib
