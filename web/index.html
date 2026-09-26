@@ -164,8 +164,8 @@ void example_function(void) {
 
         // 2. Find the newest run created after we triggered
         let runId = null;
-        for (let i = 0; i < 40; i++) {
-          await sleep(3000);
+        for (let i = 0; i < 72; i++) {
+          await sleep(5000);
           const runsRes = await fetch(
             `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs?event=repository_dispatch&per_page=5`,
             {
@@ -176,13 +176,17 @@ void example_function(void) {
               }
             }
           );
+          if (!runsRes.ok) {
+            const errText = await runsRes.text();
+            throw new Error(`Could not query workflow runs (${runsRes.status}): ${errText}`);
+          }
           const runsData = await runsRes.json();
           const runs = runsData.workflow_runs || [];
 
           // Prefer a run that started after we triggered
           const fresh = runs.find(r => {
             const created = new Date(r.created_at).getTime();
-            return created >= triggerTime - 5000; // 5s tolerance
+            return created >= triggerTime - 30000; // 30s tolerance for GitHub API/event delay
           });
 
           if (fresh) {
