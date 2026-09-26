@@ -13,102 +13,43 @@
       min-height: 100vh;
       padding: 20px;
     }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-    h1 {
-      font-size: 1.8rem;
-      margin-bottom: 8px;
-      color: #fff;
-    }
-    .subtitle {
-      color: #888;
-      margin-bottom: 30px;
-      font-size: 0.95rem;
-    }
-    label {
-      display: block;
-      margin-bottom: 6px;
-      font-weight: 500;
-      color: #ccc;
-    }
-    input, textarea, select {
-      width: 100%;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      color: #e0e0e0;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 14px;
-      margin-bottom: 16px;
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 1.8rem; margin-bottom: 8px; color: #fff; }
+    .subtitle { color: #888; margin-bottom: 30px; font-size: 0.95rem; }
+    label { display: block; margin-bottom: 6px; font-weight: 500; color: #ccc; }
+    input, textarea {
+      width: 100%; background: #1a1a1a; border: 1px solid #333; color: #e0e0e0;
+      padding: 12px; border-radius: 8px; font-size: 14px; margin-bottom: 16px;
       font-family: 'SF Mono', Monaco, monospace;
     }
-    textarea {
-      min-height: 220px;
-      resize: vertical;
-    }
+    textarea { min-height: 220px; resize: vertical; }
     button {
-      background: #007aff;
-      color: white;
-      border: none;
-      padding: 14px 28px;
-      border-radius: 8px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      width: 100%;
-      transition: background 0.2s;
+      background: #007aff; color: white; border: none; padding: 14px 28px;
+      border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%;
     }
     button:hover { background: #0056b3; }
-    button:disabled {
-      background: #333;
-      cursor: not-allowed;
-    }
+    button:disabled { background: #333; cursor: not-allowed; }
     .status {
-      margin-top: 24px;
-      padding: 16px;
-      background: #1a1a1a;
-      border-radius: 8px;
-      border: 1px solid #333;
-      display: none;
+      margin-top: 24px; padding: 16px; background: #1a1a1a; border-radius: 8px;
+      border: 1px solid #333; display: none;
     }
     .status.show { display: block; }
     .status.success { border-color: #30d158; }
     .status.error { border-color: #ff453a; }
     .log {
-      font-family: monospace;
-      font-size: 13px;
-      white-space: pre-wrap;
-      color: #aaa;
-      margin-top: 12px;
-      max-height: 200px;
-      overflow-y: auto;
+      font-family: monospace; font-size: 13px; white-space: pre-wrap; color: #aaa;
+      margin-top: 12px; max-height: 220px; overflow-y: auto;
     }
     .download-btn {
-      display: inline-block;
-      margin-top: 12px;
-      background: #30d158;
-      color: #000;
-      padding: 10px 20px;
-      border-radius: 6px;
-      text-decoration: none;
-      font-weight: 600;
+      display: inline-block; margin-top: 12px; background: #30d158; color: #000;
+      padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;
     }
     .warning {
-      background: #2a1f00;
-      border: 1px solid #664d00;
-      color: #ffd60a;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      font-size: 0.9rem;
+      background: #2a1f00; border: 1px solid #664d00; color: #ffd60a;
+      padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem;
     }
     .pat-section {
-      background: #1a1a1a;
-      padding: 16px;
-      border-radius: 8px;
-      margin-bottom: 24px;
+      background: #1a1a1a; padding: 16px; border-radius: 8px; margin-bottom: 24px;
       border: 1px solid #333;
     }
   </style>
@@ -119,7 +60,7 @@
     <p class="subtitle">Real arm64 iOS dylibs via GitHub Actions macOS runners + Xcode</p>
 
     <div class="warning">
-      This is a personal tool. Paste a fine-grained GitHub PAT with access to the <code>compiler</code> repo (Contents + Actions). Never share this page publicly with a real token.
+      Personal tool only. Paste a fine-grained GitHub PAT with access to the <code>compiler</code> repo (Contents + Actions). Never share this page publicly with a real token.
     </div>
 
     <div class="pat-section">
@@ -131,7 +72,7 @@
     <input type="text" id="filename" value="libexample" placeholder="libexample">
 
     <label for="source">Objective-C / C source</label>
-    <textarea id="source">#import &lt;Foundation/Foundation.h&gt;
+    <textarea id="source">#import <Foundation/Foundation.h>
 
 __attribute__((constructor))
 static void init(void) {
@@ -161,15 +102,16 @@ void example_function(void) {
       el.scrollTop = el.scrollHeight;
     }
 
+    function toBase64(str) {
+      return btoa(unescape(encodeURIComponent(str)));
+    }
+
     async function startBuild() {
       const pat = document.getElementById('pat').value.trim();
       const filename = document.getElementById('filename').value.trim() || 'libexample';
       const source = document.getElementById('source').value;
 
-      if (!pat) {
-        alert('Paste your GitHub PAT first');
-        return;
-      }
+      if (!pat) { alert('Paste your GitHub PAT first'); return; }
 
       const btn = document.getElementById('buildBtn');
       const status = document.getElementById('status');
@@ -182,9 +124,11 @@ void example_function(void) {
       document.getElementById('log').textContent = '';
       downloadArea.innerHTML = '';
 
+      const triggerTime = Date.now();
+
       try {
-        // 1. Trigger repository_dispatch
-        log('Sending repository_dispatch...');
+        // 1. Trigger with base64 source (avoids escaping problems)
+        log('Sending repository_dispatch (source as base64)...');
         const triggerRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/dispatches`, {
           method: 'POST',
           headers: {
@@ -195,7 +139,7 @@ void example_function(void) {
           body: JSON.stringify({
             event_type: 'build-dylib',
             client_payload: {
-              source: source,
+              source_b64: toBase64(source),
               filename: filename
             }
           })
@@ -206,27 +150,46 @@ void example_function(void) {
           throw new Error(`Trigger failed (${triggerRes.status}): ${err}`);
         }
 
-        log('Triggered successfully. Waiting for workflow to start...');
+        log('Triggered successfully. Waiting for new workflow run...');
         statusText.textContent = 'Build queued...';
 
-        // 2. Poll for the latest run
+        // 2. Find the newest run created after we triggered
         let runId = null;
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < 40; i++) {
           await sleep(3000);
-          const runsRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/actions/runs?event=repository_dispatch&per_page=5`, {
-            headers: {
-              'Accept': 'application/vnd.github+json',
-              'Authorization': `Bearer ${pat}`,
-              'X-GitHub-Api-Version': '2022-11-28'
+          const runsRes = await fetch(
+            `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs?event=repository_dispatch&per_page=5`,
+            {
+              headers: {
+                'Accept': 'application/vnd.github+json',
+                'Authorization': `Bearer ${pat}`,
+                'X-GitHub-Api-Version': '2022-11-28'
+              }
             }
-          });
+          );
           const runsData = await runsRes.json();
-          const run = runsData.workflow_runs?.find(r => r.status === 'queued' || r.status === 'in_progress' || r.status === 'completed');
-          if (run) {
-            runId = run.id;
-            log(`Found run #${runId} (${run.status})`);
+          const runs = runsData.workflow_runs || [];
+
+          // Prefer a run that started after we triggered
+          const fresh = runs.find(r => {
+            const created = new Date(r.created_at).getTime();
+            return created >= triggerTime - 5000; // 5s tolerance
+          });
+
+          if (fresh) {
+            runId = fresh.id;
+            log(`Found new run #${runId} (${fresh.status})`);
             break;
           }
+
+          // Fallback: take the most recent one if it's still running
+          const running = runs.find(r => r.status === 'queued' || r.status === 'in_progress');
+          if (running) {
+            runId = running.id;
+            log(`Found running run #${runId}`);
+            break;
+          }
+
           log('Still waiting for run to appear...');
         }
 
@@ -234,7 +197,7 @@ void example_function(void) {
 
         // 3. Wait for completion
         statusText.textContent = 'Building on macOS runner...';
-        let completed = false;
+        let conclusion = null;
         for (let i = 0; i < 60; i++) {
           await sleep(5000);
           const runRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}`, {
@@ -248,19 +211,22 @@ void example_function(void) {
           log(`Status: ${runData.status} / ${runData.conclusion || '...'}`);
 
           if (runData.status === 'completed') {
-            completed = true;
-            if (runData.conclusion !== 'success') {
-              throw new Error(`Build failed with conclusion: ${runData.conclusion}`);
-            }
+            conclusion = runData.conclusion;
             break;
           }
         }
 
-        if (!completed) throw new Error('Build timed out');
+        if (!conclusion) throw new Error('Build timed out');
+
+        if (conclusion !== 'success') {
+          throw new Error(`Build failed (${conclusion}). Check logs: https://github.com/${OWNER}/${REPO}/actions/runs/${runId}`);
+        }
 
         // 4. Get artifacts
         statusText.textContent = 'Build succeeded! Fetching artifact...';
         log('Fetching artifacts...');
+        await sleep(2000); // small delay for artifact registration
+
         const artRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}/artifacts`, {
           headers: {
             'Accept': 'application/vnd.github+json',
@@ -271,20 +237,21 @@ void example_function(void) {
         const artData = await artRes.json();
         const artifact = artData.artifacts?.[0];
 
-        if (!artifact) throw new Error('No artifact found');
+        if (!artifact) {
+          throw new Error(`No artifact found. Open the run and check the logs: https://github.com/${OWNER}/${REPO}/actions/runs/${runId}`);
+        }
 
         log(`Artifact: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
 
-        // Download link (needs auth, so we open the API URL)
         const downloadUrl = `https://api.github.com/repos/${OWNER}/${REPO}/actions/artifacts/${artifact.id}/zip`;
 
         status.className = 'status show success';
         statusText.textContent = 'Done! Your dylib is ready.';
         downloadArea.innerHTML = `
-          <p style="margin-top:12px">Click below to download (browser will ask for auth or use the PAT).</p>
+          <p style="margin-top:12px">Download (may require being logged into GitHub in this browser):</p>
           <a class="download-btn" href="${downloadUrl}" target="_blank">Download ${artifact.name}.zip</a>
           <p style="margin-top:10px;font-size:13px;color:#888">
-            Or go to the <a href="https://github.com/${OWNER}/${REPO}/actions/runs/${runId}" target="_blank" style="color:#007aff">Actions run</a> and download from there.
+            Or open the <a href="https://github.com/${OWNER}/${REPO}/actions/runs/${runId}" target="_blank" style="color:#007aff">Actions run</a> and download the artifact from there.
           </p>
         `;
 
