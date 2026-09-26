@@ -1,0 +1,69 @@
+name: Build iOS dylib
+
+on:
+  repository_dispatch:
+    types: [build-dylib]
+  workflow_dispatch:
+    inputs:
+      source_code:
+        description: 'C/Objective-C source code'
+        required: true
+        type: string
+      filename:
+        description: 'Output dylib name (without .dylib)'
+        required: false
+        default: 'libexample'
+        type: string
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Create source file
+        run: |
+          mkdir -p src
+          # Prefer payload from repository_dispatch, fall back to workflow_dispatch input
+          if [ -n "${{ github.event.client_payload.source }}" ]; then
+            echo '${{ github.event.client_payload.source }}' > src/lib.m
+            FILENAME="${{ github.event.client_payload.filename || 'libexample' }}"
+          else
+            echo '${{ inputs.source_code }}' > src/lib.m
+            FILENAME="${{ inputs.filename }}"
+          fi
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+          cat src/lib.m
+
+      - name: Compile arm64 iOS dylib
+        run: |
+          # Real iOS SDK from Xcode
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "Using SDK: $SDK"
+
+          clang -arch arm64 \
+                -isysroot "$SDK" \
+                -miphoneos-version-min=14.0 \
+                -fobjc-arc \
+                -dynamiclib \
+                -o "${FILENAME}.dylib" \
+                src/lib.m \
+                -framework Foundation
+
+          file "${FILENAME}.dylib"
+          ls -lh "${FILENAME}.dylib"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILENAME }}-dylib
+          path: ${{ env.FILENAME }}.dylib
+          retention-days: 3
