@@ -30,24 +30,44 @@ jobs:
           xcode-version: latest-stable
 
       - name: Create source file
+        env:
+          SOURCE_B64: ${{ github.event.client_payload.source_b64 || '' }}
+          SOURCE_RAW: ${{ github.event.client_payload.source || inputs.source_code || '' }}
+          FILENAME_IN: ${{ github.event.client_payload.filename || inputs.filename || 'libexample' }}
         run: |
+          set -e
           mkdir -p src
-          # Prefer payload from repository_dispatch, fall back to workflow_dispatch input
-          if [ -n "${{ github.event.client_payload.source }}" ]; then
-            echo '${{ github.event.client_payload.source }}' > src/lib.m
-            FILENAME="${{ github.event.client_payload.filename || 'libexample' }}"
+
+          if [ -n "$SOURCE_B64" ]; then
+            echo "$SOURCE_B64" | base64 -d > src/lib.m
+            echo "Using base64 source"
+          elif [ -n "$SOURCE_RAW" ]; then
+            # Write raw source safely
+            printf '%s' "$SOURCE_RAW" > src/lib.m
+            echo "Using raw source"
           else
-            echo '${{ inputs.source_code }}' > src/lib.m
-            FILENAME="${{ inputs.filename }}"
+            echo "ERROR: No source code provided" >&2
+            exit 1
+          fi
+
+          # Sanitize filename
+          FILENAME=$(echo "$FILENAME_IN" | tr -cd '[:alnum:]_-')
+          if [ -z "$FILENAME" ]; then
+            FILENAME="libexample"
           fi
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
-          cat src/lib.m
+
+          echo "===== Source file ====="
+          cat -n src/lib.m
+          echo "======================="
+          ls -la src/
 
       - name: Compile arm64 iOS dylib
         run: |
-          # Real iOS SDK from Xcode
+          set -e
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
           echo "Using SDK: $SDK"
+          echo "Output will be: ${FILENAME}.dylib"
 
           clang -arch arm64 \
                 -isysroot "$SDK" \
@@ -58,12 +78,15 @@ jobs:
                 src/lib.m \
                 -framework Foundation
 
+          echo "===== Built file ====="
           file "${FILENAME}.dylib"
           ls -lh "${FILENAME}.dylib"
+          echo "======================"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.FILENAME }}-dylib
           path: ${{ env.FILENAME }}.dylib
+          if-no-files-found: error
           retention-days: 3
