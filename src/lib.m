@@ -2145,22 +2145,19 @@ UIView
     switch (sender.tag) {
 
         case 0:
-
             self.homeSectionView.hidden = NO;
             self.editorSectionView.hidden = YES;
-
+            if (![self.homeScripts containsObject:self.activeScript]) self.activeScript = self.homeScripts.lastObject;
             [self refreshHomeGrid];
 
             break;
 
 
         case 1:
-
             self.homeSectionView.hidden = YES;
             self.editorSectionView.hidden = NO;
-
+            if (![self.editorScripts containsObject:self.activeScript]) self.activeScript = self.editorScripts.lastObject;
             [self refreshFileList];
-
             [self loadActiveScriptToEditor];
 
             break;
@@ -2204,6 +2201,7 @@ UIView
         self.mainPanelContainer.hidden = NO;
         self.sidebarContainer.hidden = NO;
         self.minimizeButton.hidden = YES;
+        self.toggleButton.hidden = NO;
         self.userInteractionEnabled = YES;
         self.backgroundColor = [UIColor clearColor];
     } else {
@@ -2212,6 +2210,7 @@ UIView
         self.backgroundColor = [UIColor clearColor];
         [self ensureMinimizeButton];
         self.minimizeButton.hidden = NO;
+        self.toggleButton.hidden = YES;
         // A minimized overlay must not steal touches from the host app.
         self.userInteractionEnabled = NO;
     }
@@ -2929,6 +2928,8 @@ static void AttachOverlayAttempt(NSUInteger attempt) {
             ExecutorOverlayView *overlay =
                 [[ExecutorOverlayView alloc]
                     initWithFrame:window.bounds];
+            gExecutorOverlay = overlay;
+            NSSetUncaughtExceptionHandler(ExecutorUncaughtExceptionHandler);
 
 
             overlay.autoresizingMask =
@@ -2968,6 +2969,16 @@ static void attachOverlayToWindow(void) {
     );
 }
 
+
+static __weak ExecutorOverlayView *gExecutorOverlay = nil;
+
+static void ExecutorUncaughtExceptionHandler(NSException *exception) {
+    NSString *message = [NSString stringWithFormat:@"[Executor][Exception] %@: %@\n", exception.name ?: @"Exception", exception.reason ?: @"No reason"];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [gExecutorOverlay appendLog:message];
+        NSLog(@"%@", message);
+    });
+}
 
 // ============================================================
 // Dylib Constructor
