@@ -57,6 +57,26 @@ jobs:
           FILENAME=$(printf '%s' "$FILENAME_IN" | tr -cd '[:alnum:]_-')
           [ -n "$FILENAME" ] || FILENAME="libexample"
           echo "FILENAME=$FILENAME" >> "$GITHUB_ENV"
+
+          # Objective-C requires file-scope declarations before C functions
+          # are referenced. Keep uploaded source intact while providing
+          # forward declarations for the overlay helper functions used
+          # earlier in the file.
+          if grep -q "FindBestWindowForOverlay();" src/lib.m && ! grep -q "^static UIWindow \*FindBestWindowForOverlay(void);" src/lib.m; then
+            tmp="src/lib.m.fixed"
+            {
+              printf '%s\n' '#import <UIKit/UIKit.h>'
+              printf '%s\n' '#import <QuartzCore/QuartzCore.h>'
+              printf '%s\n' ''
+              printf '%s\n' 'static UIWindow *FindBestWindowForOverlay(void);'
+              printf '%s\n' 'static void AttachOverlayAttempt(NSUInteger attempt);'
+              printf '%s\n' 'static void attachOverlayToWindow(void);'
+              printf '%s\n' ''
+              cat src/lib.m
+            } > "$tmp"
+            mv "$tmp" src/lib.m
+          fi
+
           echo "Source size: $(wc -c < src/lib.m) bytes"
 
       - name: Compile arm64 iOS dylib
