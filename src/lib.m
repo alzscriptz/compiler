@@ -1,9 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
 
 #pragma mark - Forward declarations
 
