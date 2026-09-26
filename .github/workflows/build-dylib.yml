@@ -42,7 +42,6 @@ jobs:
             echo "$SOURCE_B64" | base64 -d > src/lib.m
             echo "Using base64 source"
           elif [ -n "$SOURCE_RAW" ]; then
-            # Write raw source safely
             printf '%s' "$SOURCE_RAW" > src/lib.m
             echo "Using raw source"
           else
@@ -62,7 +61,7 @@ jobs:
           echo "======================="
           ls -la src/
 
-      - name: Compile arm64 iOS dylib
+      - name: Compile arm64 iOS dylib (with UIKit)
         run: |
           set -e
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
@@ -73,10 +72,15 @@ jobs:
                 -isysroot "$SDK" \
                 -miphoneos-version-min=14.0 \
                 -fobjc-arc \
+                -fmodules \
                 -dynamiclib \
                 -o "${FILENAME}.dylib" \
                 src/lib.m \
-                -framework Foundation
+                -framework Foundation \
+                -framework UIKit \
+                -framework CoreGraphics \
+                -framework QuartzCore \
+                -framework CoreFoundation
 
           echo "===== Built file ====="
           file "${FILENAME}.dylib"
