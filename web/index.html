@@ -301,7 +301,7 @@ void example_function(void) {
         statusText.textContent = 'Build succeeded! Fetching dylib...';
         log('Fetching release asset...');
 
-        const releaseTag = `build-${runId}`;
+        const releaseTag = 'latest-build';
         let release = null;
         for (let i = 0; i < 12; i++) {
           const releaseRes = await fetch(
@@ -330,7 +330,7 @@ void example_function(void) {
         }
 
         if (!release) {
-          throw new Error(`Build succeeded, but release ${releaseTag} was not found.`);
+          throw new Error(`Build succeeded, but the latest-build release was not found.`);
         }
 
         const asset = (release.assets || []).find(a =>
@@ -350,7 +350,7 @@ void example_function(void) {
           <a class="download-btn" href="${asset.browser_download_url}" target="_blank" rel="noopener">Download ${asset.name}</a>
           <p style="margin-top:10px;font-size:13px;color:#888">
             Release:
-            <a href="${release.html_url}" target="_blank" rel="noopener" style="color:#007aff">build #${runId}</a>
+            <a href="${release.html_url}" target="_blank" rel="noopener" style="color:#007aff">latest-build</a>
           </p>
         `;
 
