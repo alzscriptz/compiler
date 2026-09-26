@@ -58,6 +58,7 @@ UIView
 @property (nonatomic, assign) NSUInteger nextCreationOrder;
 @property (nonatomic, strong) UIButton *minimizeButton;
 @property (nonatomic, strong) UIView *logPanel;
+@property (nonatomic, strong) UIView *settingsPanel;
 @property (nonatomic, strong) UITextView *logTextView;
 @property (nonatomic, strong) UISwitch *hideRecordingSwitch;
 @property (nonatomic, strong) UISegmentedControl *minimizeShapeControl;
@@ -91,7 +92,7 @@ UIView
         self.editorScripts = [NSMutableArray array];
         self.executedScripts = [NSMutableArray array];
         self.nextCreationOrder = 1;
-        self.minimizeShape = 0;
+        self.minimizeShape = [[NSUserDefaults standardUserDefaults] integerForKey:@"ExecutorMinimizeShape"];
         self.newScriptTargetSection = 0;
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(screenCaptureChanged:) name:UIScreenCapturedDidChangeNotification object:nil];
 
@@ -424,7 +425,7 @@ UIView
 
 
     for (NSInteger i = 0;
-         i < self.scripts.count;
+         i < self.homeScripts.count;
          i++) {
 
         ScriptModel *script =
@@ -623,7 +624,7 @@ UIView
 
 
     NSInteger rows =
-        (self.scripts.count + columns - 1) /
+        (self.homeScripts.count + columns - 1) /
         columns;
 
 
@@ -659,13 +660,13 @@ UIView
 
 
     if (scriptIndex < 0 ||
-        scriptIndex >= self.scripts.count) {
+        scriptIndex >= self.homeScripts.count) {
         return;
     }
 
 
     ScriptModel *script =
-        self.scripts[scriptIndex];
+        self.homeScripts[scriptIndex];
 
 
     switch (action) {
@@ -1041,8 +1042,8 @@ UIView
 
 
 - (void)openNewScriptModalForEditor {
-    self.newScriptTargetSection = 1;
     [self openNewScriptModal];
+    self.newScriptTargetSection = 1;
 }
 
 // ============================================================
@@ -1059,7 +1060,7 @@ UIView
         ? self.modalTitleField.text
         : [NSString stringWithFormat:
             @"title.%lu",
-            (unsigned long)self.scripts.count + 1];
+            (unsigned long)(self.newScriptTargetSection == 0 ? self.homeScripts.count : self.editorScripts.count) + 1];
 
 
     ScriptModel *script =
@@ -1141,17 +1142,13 @@ UIView
                         (self.activeScript == script);
 
 
-                    [self.scripts
-                        removeObject:script];
-
+                    NSMutableArray *owner = [self.homeScripts containsObject:script] ? self.homeScripts : self.editorScripts;
+                    [owner removeObject:script];
 
                     if (wasActive) {
-
                         self.activeScript = nil;
-
-                        if (self.scripts.count > 0) {
-                            self.activeScript =
-                                self.scripts.lastObject;
+                        if (owner.count > 0) {
+                            self.activeScript = owner.lastObject;
                         }
                     }
 
@@ -2260,8 +2257,8 @@ UIView
     self.minimizeButton.center = CGPointMake(MAX(halfW, MIN(self.bounds.size.width-halfW, self.minimizeButton.center.x)), MAX(halfH, MIN(self.bounds.size.height-halfH, self.minimizeButton.center.y)));
 }
 - (void)showLogPanel {
-    if (!self.logPanel) {
-        self.logPanel = [[UIView alloc] initWithFrame:CGRectMake(95, 35, 525, 285)];
+    if (!self.settingsPanel) {
+        self.settingsPanel = [[UIView alloc] initWithFrame:CGRectMake(95, 35, 525, 285)];
         self.logPanel.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
         self.logPanel.layer.cornerRadius = 18;
         self.logTextView = [[UITextView alloc] initWithFrame:CGRectInset(self.logPanel.bounds, 10, 10)];
@@ -2275,6 +2272,7 @@ UIView
         [self addSubview:self.logPanel];
     }
     self.logPanel.hidden = NO;
+    if (self.settingsPanel) self.settingsPanel.hidden = YES;
     self.logTextView.text = self.logTextView.text.length ? self.logTextView.text : @"[Executor] Log ready…\n";
     [self.logTextView scrollRangeToVisible:NSMakeRange(self.logTextView.text.length ? self.logTextView.text.length-1 : 0, 0)];
 }
@@ -2283,34 +2281,36 @@ UIView
         self.logPanel = [[UIView alloc] initWithFrame:CGRectMake(95, 35, 525, 285)];
         self.logPanel.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
         self.logPanel.layer.cornerRadius = 18;
-        [self addSubview:self.logPanel];
+        [self addSubview:self.settingsPanel];
     }
-    for (UIView *v in [self.logPanel.subviews copy]) [v removeFromSuperview];
+    for (UIView *v in [self.settingsPanel.subviews copy]) [v removeFromSuperview];
     UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(18, 12, 300, 28)];
     title.text = @"Settings"; title.textColor = UIColor.whiteColor; title.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
-    [self.logPanel addSubview:title];
+    [self.settingsPanel addSubview:title];
     UILabel *shapeLabel = [[UILabel alloc] initWithFrame:CGRectMake(18, 58, 240, 24)];
     shapeLabel.text = @"Minimize button"; shapeLabel.textColor = UIColor.whiteColor;
-    [self.logPanel addSubview:shapeLabel];
+    [self.settingsPanel addSubview:shapeLabel];
     self.minimizeShapeControl = [[UISegmentedControl alloc] initWithItems:@[@"Squircle",@"Square",@"Circle"]];
     self.minimizeShapeControl.frame = CGRectMake(18, 88, 330, 34);
     self.minimizeShapeControl.selectedSegmentIndex = self.minimizeShape;
     [self.minimizeShapeControl addTarget:self action:@selector(minimizeShapeChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.logPanel addSubview:self.minimizeShapeControl];
+    [self.settingsPanel addSubview:self.minimizeShapeControl];
     UILabel *rec = [[UILabel alloc] initWithFrame:CGRectMake(18, 145, 300, 24)];
     rec.text = @"Hide UI while screen recording"; rec.textColor = UIColor.whiteColor;
-    [self.logPanel addSubview:rec];
+    [self.settingsPanel addSubview:rec];
     self.hideRecordingSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(365, 138, 60, 32)];
+    self.hideRecordingSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"ExecutorHideRecording"];
     [self.hideRecordingSwitch addTarget:self action:@selector(recordingSettingChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.logPanel addSubview:self.hideRecordingSwitch];
+    [self.settingsPanel addSubview:self.hideRecordingSwitch];
     UIButton *clean = [UIButton buttonWithType:UIButtonTypeSystem];
     clean.frame = CGRectMake(18, 195, 180, 38); [clean setTitle:@"Clean Exe" forState:UIControlStateNormal];
     clean.backgroundColor = [UIColor systemRedColor]; [clean setTitleColor:UIColor.whiteColor forState:UIControlStateNormal]; clean.layer.cornerRadius = 19;
     [clean addTarget:self action:@selector(cleanExecutedScripts) forControlEvents:UIControlEventTouchUpInside];
-    [self.logPanel addSubview:clean];
-    self.logPanel.hidden = NO;
+    [self.settingsPanel addSubview:clean];
+    self.settingsPanel.hidden = NO;
+    self.logPanel.hidden = YES;
 }
-- (void)minimizeShapeChanged:(UISegmentedControl *)sender { self.minimizeShape = sender.selectedSegmentIndex; [self applyMinimizeShape]; }
+- (void)minimizeShapeChanged:(UISegmentedControl *)sender { self.minimizeShape = sender.selectedSegmentIndex; [[NSUserDefaults standardUserDefaults] setInteger:self.minimizeShape forKey:@"ExecutorMinimizeShape"]; [self applyMinimizeShape]; }
 - (void)recordingSettingChanged:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:@"ExecutorHideRecording"]; }
 - (void)cleanExecutedScripts {
     [self.executedScripts removeAllObjects];
@@ -2333,6 +2333,18 @@ UIView
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    if (self.mainPanelContainer.hidden) {
+        if (self.minimizeButton && !self.minimizeButton.hidden) {
+            CGPoint local = [self.minimizeButton convertPoint:point fromView:self];
+            if ([self.minimizeButton pointInside:local withEvent:event]) return self.minimizeButton;
+        }
+        return nil;
+    }
+    return [super hitTest:point withEvent:event];
+}
+
 
 // ============================================================
 // Compile
