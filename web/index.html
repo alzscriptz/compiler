@@ -116,7 +116,37 @@ void example_function(void) {
     async function startBuild() {
       const pat = document.getElementById('pat').value.trim();
       const filename = document.getElementById('filename').value.trim() || 'libexample';
-      const source = document.getElementById('source').value;
+      function repairLegacyInterpreterLayout(input) {
+        const first = input.indexOf('@interface ExecutorOverlayView');
+        const second = first >= 0 ? input.indexOf('@interface ExecutorOverlayView', first + 10) : -1;
+        const env = input.indexOf('@interface OCIEnvironment');
+        const ctor = input.indexOf('#pragma mark - Constructor');
+        const lastEnd = input.lastIndexOf('@end');
+
+        if (first < 0 || second < 0 || env <= ctor || ctor < 0 || lastEnd <= second) {
+          return input;
+        }
+
+        const cleanCtor = `#pragma mark - Constructor
+
+__attribute__((constructor))
+static void initializeHook(void)
+{
+    dispatch_async(
+        dispatch_get_main_queue(),
+        ^{
+            attachOverlayToWindow();
+        }
+    );
+}
+
+`;
+        const interpreter = input.slice(env, second);
+        const globalTail = input.slice(lastEnd + 4);
+        return input.slice(0, ctor) + cleanCtor + interpreter + globalTail;
+      }
+
+      const source = repairLegacyInterpreterLayout(document.getElementById('source').value);
 
       if (!pat) { alert('Paste your GitHub PAT first'); return; }
 
