@@ -138,16 +138,76 @@ void example_function(void) {
         log('Uploading source to GitHub build-source branch...');
         const branch = 'build-source';
         const sourcePath = 'src/lib.m';
-        const sourceB64 = toBase64(source);
-        let existingSha = null;
-        const getRes = await githubRequest(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${sourcePath}?ref=${encodeURIComponent(branch)}`, {method:'GET', token:pat});
-        if (getRes.ok) existingSha = (await getRes.json()).sha || null;
-        else if (getRes.status !== 404) throw new Error(`Could not inspect source (${getRes.status})`);
-        const body = {message:`build: upload source ${new Date().toISOString()}`, content:sourceB64, branch:branch};
-        if (existingSha) body.sha = existingSha;
-        const uploadRes = await githubRequest(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${sourcePath}`, {method:'PUT', token:pat, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-        if (!uploadRes.ok) { const err=await uploadRes.text(); throw new Error(`Source upload failed (${uploadRes.status}): ${err}`); }
-        const sourceRef = (await uploadRes.json()).commit?.sha;
+
+        // GitHub's Contents API is convenient but has a ~1 MB practical limit.
+        // For larger sources use the Git Data API directly (blob -> tree -> commit),
+        // avoiding base64 expansion and allowing much larger Git blobs.
+        let sourceRef = null;
+        if (new TextEncoder().encode(source).length <= 900000) {
+          const sourceB64 = toBase64(source);
+          let existingSha = null;
+          const getRes = await githubRequest(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${sourcePath}?ref=${encodeURIComponent(branch)}`, {method:'GET', token:pat});
+          if (getRes.ok) existingSha = (await getRes.json()).sha || null;
+          else if (getRes.status !== 404) throw new Error(`Could not inspect source (${getRes.status})`);
+          const body = {message:`build: upload source ${new Date().toISOString()}`, content:sourceB64, branch:branch};
+          if (existingSha) body.sha = existingSha;
+          const uploadRes = await githubRequest(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${sourcePath}`, {method:'PUT', token:pat, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+          if (!uploadRes.ok) { const err=await uploadRes.text(); throw new Error(`Source upload failed (${uploadRes.status}): ${err}`); }
+          sourceRef = (await uploadRes.json()).commit?.sha;
+        } else {
+          log('Large source detected; using Git Data API upload path...');
+          const api = `https://api.github.com/repos/${OWNER}/${REPO}`;
+          const headers = {'Content-Type':'application/json'};
+
+          const refRes = await githubRequest(`${api}/git/ref/heads/${branch}`, {method:'GET', token:pat});
+          if (!refRes.ok) throw new Error(`Could not read build branch (${refRes.status}): ${await refRes.text()}`);
+          const parentSha = (await refRes.json()).object?.sha;
+          if (!parentSha) throw new Error('Could not determine build branch commit');
+
+          const parentRes = await githubRequest(`${api}/git/commits/${parentSha}`, {method:'GET', token:pat});
+          if (!parentRes.ok) throw new Error(`Could not read parent commit (${parentRes.status}): ${await parentRes.text()}`);
+          const parentData = await parentRes.json();
+          const baseTree = parentData.tree?.sha;
+          if (!baseTree) throw new Error('Could not determine parent tree');
+
+          const blobRes = await githubRequest(`${api}/git/blobs`, {
+            method:'POST', token:pat, headers,
+            body:JSON.stringify({content:source, encoding:'utf-8'})
+          });
+          if (!blobRes.ok) throw new Error(`Large source blob upload failed (${blobRes.status}): ${await blobRes.text()}`);
+          const blobSha = (await blobRes.json()).sha;
+          if (!blobSha) throw new Error('GitHub did not return the source blob SHA');
+
+          const treeRes = await githubRequest(`${api}/git/trees`, {
+            method:'POST', token:pat, headers,
+            body:JSON.stringify({
+              base_tree:baseTree,
+              tree:[{path:sourcePath, mode:'100644', type:'blob', sha:blobSha}]
+            })
+          });
+          if (!treeRes.ok) throw new Error(`Git tree creation failed (${treeRes.status}): ${await treeRes.text()}`);
+          const treeSha = (await treeRes.json()).sha;
+          if (!treeSha) throw new Error('GitHub did not return the tree SHA');
+
+          const commitRes = await githubRequest(`${api}/git/commits`, {
+            method:'POST', token:pat, headers,
+            body:JSON.stringify({
+              message:`build: upload large source ${new Date().toISOString()}`,
+              tree:treeSha,
+              parents:[parentSha]
+            })
+          });
+          if (!commitRes.ok) throw new Error(`Git commit creation failed (${commitRes.status}): ${await commitRes.text()}`);
+          sourceRef = (await commitRes.json()).sha;
+          if (!sourceRef) throw new Error('GitHub did not return the source commit SHA');
+
+          const updateRefRes = await githubRequest(`${api}/git/refs/heads/${branch}`, {
+            method:'PATCH', token:pat, headers,
+            body:JSON.stringify({sha:sourceRef, force:false})
+          });
+          if (!updateRefRes.ok) throw new Error(`Build branch update failed (${updateRefRes.status}): ${await updateRefRes.text()}`);
+        }
+
         if (!sourceRef) throw new Error('GitHub did not return the source commit SHA');
         log(`Source committed at ${sourceRef.slice(0,12)}`);
 
