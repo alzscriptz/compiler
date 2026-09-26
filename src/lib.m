@@ -692,12 +692,10 @@ UIView
 
             self.activeScript = script;
 
-            if (self.newScriptTargetSection == 0) {
-                [self.homeScripts sortUsingComparator:^NSComparisonResult(ScriptModel *a, ScriptModel *b) {
+            [self.homeScripts sortUsingComparator:^NSComparisonResult(ScriptModel *a, ScriptModel *b) {
                     if (a.isFavorite != b.isFavorite) return a.isFavorite ? NSOrderedAscending : NSOrderedDescending;
                     return a.creationOrder < b.creationOrder ? NSOrderedAscending : (a.creationOrder > b.creationOrder ? NSOrderedDescending : NSOrderedSame);
-                }];
-            }
+            }];
             [self refreshHomeGrid];
             [self refreshFileList];
             [self loadActiveScriptToEditor];
