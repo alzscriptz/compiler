@@ -23,7 +23,7 @@ Real arm64 iOS `.dylib` compiler powered by GitHub Actions macOS runners + offic
 
 1. Open the live site: https://ios-dylib-compiler-alzscriptzs-projects.vercel.app
 2. Create a **fine-grained GitHub PAT** with access only to this repo:
-   - **Contents**: Read
+   - **Contents**: Read and Write
    - **Actions**: Read and Write
    - **Metadata**: Read
 3. Paste the PAT into the page
@@ -53,7 +53,7 @@ Then go to the Actions tab and download the artifact.
 ## Notes
 
 - This only **compiles** the dylib. Injection / signing / packaging is handled by your preferred tools (LiveContainer, KSign, etc.).
-- Free GitHub accounts have limited macOS minutes. Don’t spam builds.
+- GitHub Actions artifacts are cleaned before each build so the compiler keeps working within the available artifact storage quota.
 - The frontend stores the PAT only in your browser (never sent to any third-party server except GitHub).
 
 ## Security
