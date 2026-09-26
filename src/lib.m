@@ -12,6 +12,7 @@
 @property (nonatomic, copy) NSString *code;
 @property (nonatomic, copy) NSString *imageUrl;
 @property (nonatomic, assign) BOOL isFavorite;
+@property (nonatomic, assign) NSUInteger creationOrder;
 
 @end
 
@@ -50,8 +51,19 @@ UIView
 @property (nonatomic, strong) UIButton *favoriteHeaderBtn;
 @property (nonatomic, strong) UIButton *toggleButton;
 
-@property (nonatomic, strong) NSMutableArray<ScriptModel *> *scripts;
+@property (nonatomic, strong) NSMutableArray<ScriptModel *> *homeScripts;
+@property (nonatomic, strong) NSMutableArray<ScriptModel *> *editorScripts;
 @property (nonatomic, strong) ScriptModel *activeScript;
+@property (nonatomic, assign) NSInteger newScriptTargetSection;
+@property (nonatomic, assign) NSUInteger nextCreationOrder;
+@property (nonatomic, strong) UIButton *minimizeButton;
+@property (nonatomic, strong) UIView *logPanel;
+@property (nonatomic, strong) UITextView *logTextView;
+@property (nonatomic, strong) UISwitch *hideRecordingSwitch;
+@property (nonatomic, strong) UISegmentedControl *minimizeShapeControl;
+@property (nonatomic, assign) NSInteger minimizeShape;
+@property (nonatomic, assign) BOOL cleanExecutionOnNext;
+@property (nonatomic, strong) NSMutableArray<ScriptModel *> *executedScripts;
 
 @property (nonatomic, strong) NSMutableArray<UIButton *> *sidebarButtons;
 
@@ -75,8 +87,13 @@ UIView
 
         self.userInteractionEnabled = YES;
 
-        self.scripts =
-            [NSMutableArray array];
+        self.homeScripts = [NSMutableArray array];
+        self.editorScripts = [NSMutableArray array];
+        self.executedScripts = [NSMutableArray array];
+        self.nextCreationOrder = 1;
+        self.minimizeShape = 0;
+        self.newScriptTargetSection = 0;
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(screenCaptureChanged:) name:UIScreenCapturedDidChangeNotification object:nil];
 
         self.sidebarButtons =
             [NSMutableArray array];
@@ -315,7 +332,7 @@ UIView
 
 
     // --------------------------------------------------------
-    // ONLY Section 1 has + New
+    // Section 1 has + New
     // --------------------------------------------------------
 
     UIButton *newButton =
@@ -387,7 +404,7 @@ UIView
     }
 
 
-    if (self.scripts.count == 0) {
+    if (self.homeScripts.count == 0) {
 
         self.homeGridScrollView.contentSize =
             CGSizeMake(
@@ -411,7 +428,7 @@ UIView
          i++) {
 
         ScriptModel *script =
-            self.scripts[i];
+            self.homeScripts[i];
 
         NSInteger column =
             i % columns;
@@ -674,6 +691,12 @@ UIView
 
             self.activeScript = script;
 
+            if (self.newScriptTargetSection == 0) {
+                [self.homeScripts sortUsingComparator:^NSComparisonResult(ScriptModel *a, ScriptModel *b) {
+                    if (a.isFavorite != b.isFavorite) return a.isFavorite ? NSOrderedAscending : NSOrderedDescending;
+                    return a.creationOrder < b.creationOrder ? NSOrderedAscending : (a.creationOrder > b.creationOrder ? NSOrderedDescending : NSOrderedSame);
+                }];
+            }
             [self refreshHomeGrid];
             [self refreshFileList];
             [self loadActiveScriptToEditor];
@@ -761,6 +784,7 @@ UIView
 
 - (void)openNewScriptModal {
 
+    self.newScriptTargetSection = 0;
     [self dismissKeyboard];
 
 
@@ -1016,6 +1040,11 @@ UIView
 }
 
 
+- (void)openNewScriptModalForEditor {
+    self.newScriptTargetSection = 1;
+    [self openNewScriptModal];
+}
+
 // ============================================================
 // Save Script
 // ============================================================
@@ -1049,9 +1078,13 @@ UIView
         self.modalCodeView.text ?: @"";
 
     script.isFavorite = NO;
+    script.creationOrder = self.nextCreationOrder++;
 
-
-    [self.scripts addObject:script];
+    if (self.newScriptTargetSection == 0) {
+        [self.homeScripts addObject:script];
+    } else {
+        [self.editorScripts addObject:script];
+    }
 
     self.activeScript = script;
 
@@ -1179,6 +1212,20 @@ UIView
 
 
     // --------------------------------------------------------
+    // Section 2 + New (independent editor library)
+    // --------------------------------------------------------
+    UIButton *editorNewButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    editorNewButton.frame = CGRectMake(8.0, 10.0, 164.0, 32.0);
+    [editorNewButton setTitle:@"+ New" forState:UIControlStateNormal];
+    [editorNewButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    editorNewButton.backgroundColor = [UIColor colorWithWhite:0.20 alpha:0.8];
+    editorNewButton.layer.cornerRadius = 16.0;
+    editorNewButton.layer.borderWidth = 1.0;
+    editorNewButton.layer.borderColor = [self borderColor].CGColor;
+    [editorNewButton addTarget:self action:@selector(openNewScriptModalForEditor) forControlEvents:UIControlEventTouchUpInside];
+    [self.editorSectionView addSubview:editorNewButton];
+
+    // --------------------------------------------------------
     // File List
     // --------------------------------------------------------
 
@@ -1187,9 +1234,9 @@ UIView
             initWithFrame:
                 CGRectMake(
                     0.0,
-                    10.0,
+                    48.0,
                     180.0,
-                    frame.size.height - 20.0
+                    frame.size.height - 58.0
                 )];
 
     self.fileListScrollView.alwaysBounceVertical = YES;
@@ -1203,9 +1250,9 @@ UIView
             initWithFrame:
                 CGRectMake(
                     179.0,
-                    10.0,
+                    48.0,
                     1.0,
-                    frame.size.height - 20.0
+                    frame.size.height - 58.0
                 )];
 
     divider.backgroundColor =
@@ -1409,39 +1456,6 @@ UIView
     [editorBox addSubview:compile];
 
 
-    // --------------------------------------------------------
-    // Execute
-    // --------------------------------------------------------
-
-    UIButton *execute =
-        [UIButton buttonWithType:UIButtonTypeSystem];
-
-    execute.frame =
-        CGRectMake(
-            editorWidth - 105.0,
-            frame.size.height - 110.0,
-            95.0,
-            32.0
-        );
-
-    [execute setTitle:@"Execute"
-              forState:UIControlStateNormal];
-
-    [execute setTitleColor:[UIColor whiteColor]
-                  forState:UIControlStateNormal];
-
-    execute.backgroundColor =
-        [UIColor systemGreenColor];
-
-    execute.layer.cornerRadius = 16.0;
-
-    [execute addTarget:self
-                action:@selector(executeScript)
-      forControlEvents:UIControlEventTouchUpInside];
-
-    [editorBox addSubview:execute];
-
-
     [self refreshFileList];
 }
 
@@ -1463,11 +1477,11 @@ UIView
 
 
     for (NSInteger i = 0;
-         i < self.scripts.count;
+         i < self.editorScripts.count;
          i++) {
 
         ScriptModel *script =
-            self.scripts[i];
+            self.editorScripts[i];
 
 
         BOOL active =
@@ -1683,11 +1697,11 @@ UIView
 
 
     for (NSInteger i = 0;
-         i < self.scripts.count;
+         i < self.editorScripts.count;
          i++) {
 
         ScriptModel *script =
-            self.scripts[i];
+            self.editorScripts[i];
 
 
         if (!script.isFavorite) {
@@ -1801,13 +1815,13 @@ UIView
 
 
     if (index < 0 ||
-        index >= self.scripts.count) {
+        index >= self.editorScripts.count) {
         return;
     }
 
 
     self.activeScript =
-        self.scripts[index];
+        self.editorScripts[index];
 
 
     [self loadActiveScriptToEditor];
@@ -1829,12 +1843,12 @@ UIView
 
 
     if (index < 0 ||
-        index >= self.scripts.count) {
+        index >= self.editorScripts.count) {
         return;
     }
 
 
-    [self deleteScript:self.scripts[index]];
+    [self deleteScript:self.editorScripts[index]];
 }
 
 
@@ -1881,10 +1895,10 @@ UIView
 
 
             if (index >= 0 &&
-                index < self.scripts.count) {
+                index < self.editorScripts.count) {
 
                 [self deleteScript:
-                    self.scripts[index]];
+                    self.editorScripts[index]];
             }
 
             return;
@@ -1906,13 +1920,13 @@ UIView
 
 
     if (index < 0 ||
-        index >= self.scripts.count) {
+        index >= self.editorScripts.count) {
         return;
     }
 
 
     self.activeScript =
-        self.scripts[index];
+        self.editorScripts[index];
 
 
     [self loadActiveScriptToEditor];
@@ -2166,18 +2180,15 @@ UIView
 
 
         case 3:
-
             self.homeSectionView.hidden = YES;
             self.editorSectionView.hidden = YES;
-
+            [self showLogPanel];
             break;
 
-
         case 4:
-
             self.homeSectionView.hidden = YES;
             self.editorSectionView.hidden = YES;
-
+            [self showSettingsPanel];
             break;
 
 
@@ -2192,27 +2203,136 @@ UIView
 // ============================================================
 
 - (void)toggleMainUI {
-
     [self dismissKeyboard];
-
-
-    BOOL hidden =
-        self.mainPanelContainer.hidden;
-
-
-    self.mainPanelContainer.hidden =
-        !hidden;
-
-    self.sidebarContainer.hidden =
-        !hidden;
-
-
-    self.backgroundColor =
-        hidden
-        ? [UIColor colorWithWhite:0.0 alpha:0.25]
-        : [UIColor clearColor];
+    BOOL hidden = self.mainPanelContainer.hidden;
+    if (hidden) {
+        self.mainPanelContainer.hidden = NO;
+        self.sidebarContainer.hidden = NO;
+        self.minimizeButton.hidden = YES;
+        self.userInteractionEnabled = YES;
+        self.backgroundColor = [UIColor clearColor];
+    } else {
+        self.mainPanelContainer.hidden = YES;
+        self.sidebarContainer.hidden = YES;
+        self.backgroundColor = [UIColor clearColor];
+        [self ensureMinimizeButton];
+        self.minimizeButton.hidden = NO;
+        // A minimized overlay must not steal touches from the host app.
+        self.userInteractionEnabled = NO;
+    }
 }
 
+
+// ============================================================
+// Minimize / Settings / Log helpers
+// ============================================================
+
+- (void)ensureMinimizeButton {
+    if (self.minimizeButton) return;
+    self.minimizeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.minimizeButton.frame = CGRectMake((self.bounds.size.width - 52.0)/2.0, 18.0, 52.0, 52.0);
+    self.minimizeButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
+    self.minimizeButton.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.96];
+    self.minimizeButton.layer.borderWidth = 1.0;
+    self.minimizeButton.layer.borderColor = [self borderColor].CGColor;
+    [self.minimizeButton setTitle:@"K" forState:UIControlStateNormal];
+    [self.minimizeButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    self.minimizeButton.titleLabel.font = [UIFont systemFontOfSize:22.0 weight:UIFontWeightBold];
+    [self.minimizeButton addTarget:self action:@selector(toggleMainUI) forControlEvents:UIControlEventTouchUpInside];
+    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(moveMinimizeButton:)];
+    [self.minimizeButton addGestureRecognizer:pan];
+    [self addSubview:self.minimizeButton];
+    [self applyMinimizeShape];
+}
+- (void)applyMinimizeShape {
+    if (!self.minimizeButton) return;
+    switch (self.minimizeShape) {
+        case 1: self.minimizeButton.layer.cornerRadius = 8.0; break;
+        case 2: self.minimizeButton.layer.cornerRadius = 26.0; break;
+        default: self.minimizeButton.layer.cornerRadius = 16.0; break; // squircle
+    }
+}
+- (void)moveMinimizeButton:(UIPanGestureRecognizer *)pan {
+    CGPoint t = [pan translationInView:self];
+    self.minimizeButton.center = CGPointMake(self.minimizeButton.center.x + t.x, self.minimizeButton.center.y + t.y);
+    [pan setTranslation:CGPointZero inView:self];
+    CGFloat halfW = self.minimizeButton.bounds.size.width/2.0, halfH = self.minimizeButton.bounds.size.height/2.0;
+    self.minimizeButton.center = CGPointMake(MAX(halfW, MIN(self.bounds.size.width-halfW, self.minimizeButton.center.x)), MAX(halfH, MIN(self.bounds.size.height-halfH, self.minimizeButton.center.y)));
+}
+- (void)showLogPanel {
+    if (!self.logPanel) {
+        self.logPanel = [[UIView alloc] initWithFrame:CGRectMake(95, 35, 525, 285)];
+        self.logPanel.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
+        self.logPanel.layer.cornerRadius = 18;
+        self.logTextView = [[UITextView alloc] initWithFrame:CGRectInset(self.logPanel.bounds, 10, 10)];
+        self.logTextView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        self.logTextView.backgroundColor = [UIColor blackColor];
+        self.logTextView.textColor = [UIColor colorWithWhite:0.88 alpha:1];
+        self.logTextView.font = [UIFont fontWithName:@"Menlo" size:11] ?: [UIFont systemFontOfSize:11];
+        self.logTextView.editable = NO;
+        self.logTextView.layer.cornerRadius = 12;
+        [self.logPanel addSubview:self.logTextView];
+        [self addSubview:self.logPanel];
+    }
+    self.logPanel.hidden = NO;
+    self.logTextView.text = self.logTextView.text.length ? self.logTextView.text : @"[Executor] Log ready…\n";
+    [self.logTextView scrollRangeToVisible:NSMakeRange(self.logTextView.text.length ? self.logTextView.text.length-1 : 0, 0)];
+}
+- (void)showSettingsPanel {
+    if (!self.logPanel) {
+        self.logPanel = [[UIView alloc] initWithFrame:CGRectMake(95, 35, 525, 285)];
+        self.logPanel.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
+        self.logPanel.layer.cornerRadius = 18;
+        [self addSubview:self.logPanel];
+    }
+    for (UIView *v in [self.logPanel.subviews copy]) [v removeFromSuperview];
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(18, 12, 300, 28)];
+    title.text = @"Settings"; title.textColor = UIColor.whiteColor; title.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+    [self.logPanel addSubview:title];
+    UILabel *shapeLabel = [[UILabel alloc] initWithFrame:CGRectMake(18, 58, 240, 24)];
+    shapeLabel.text = @"Minimize button"; shapeLabel.textColor = UIColor.whiteColor;
+    [self.logPanel addSubview:shapeLabel];
+    self.minimizeShapeControl = [[UISegmentedControl alloc] initWithItems:@[@"Squircle",@"Square",@"Circle"]];
+    self.minimizeShapeControl.frame = CGRectMake(18, 88, 330, 34);
+    self.minimizeShapeControl.selectedSegmentIndex = self.minimizeShape;
+    [self.minimizeShapeControl addTarget:self action:@selector(minimizeShapeChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.logPanel addSubview:self.minimizeShapeControl];
+    UILabel *rec = [[UILabel alloc] initWithFrame:CGRectMake(18, 145, 300, 24)];
+    rec.text = @"Hide UI while screen recording"; rec.textColor = UIColor.whiteColor;
+    [self.logPanel addSubview:rec];
+    self.hideRecordingSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(365, 138, 60, 32)];
+    [self.hideRecordingSwitch addTarget:self action:@selector(recordingSettingChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.logPanel addSubview:self.hideRecordingSwitch];
+    UIButton *clean = [UIButton buttonWithType:UIButtonTypeSystem];
+    clean.frame = CGRectMake(18, 195, 180, 38); [clean setTitle:@"Clean Exe" forState:UIControlStateNormal];
+    clean.backgroundColor = [UIColor systemRedColor]; [clean setTitleColor:UIColor.whiteColor forState:UIControlStateNormal]; clean.layer.cornerRadius = 19;
+    [clean addTarget:self action:@selector(cleanExecutedScripts) forControlEvents:UIControlEventTouchUpInside];
+    [self.logPanel addSubview:clean];
+    self.logPanel.hidden = NO;
+}
+- (void)minimizeShapeChanged:(UISegmentedControl *)sender { self.minimizeShape = sender.selectedSegmentIndex; [self applyMinimizeShape]; }
+- (void)recordingSettingChanged:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:@"ExecutorHideRecording"]; }
+- (void)cleanExecutedScripts {
+    [self.executedScripts removeAllObjects];
+    self.activeScript = nil;
+    [self appendLog:@"[Executor] Clean Exe: execution state cleared.\n"];
+}
+- (void)appendLog:(NSString *)message {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!self.logTextView) return;
+        NSString *line = message ?: @"";
+        self.logTextView.text = [self.logTextView.text stringByAppendingString:line];
+        if (self.logTextView.text.length) [self.logTextView scrollRangeToVisible:NSMakeRange(self.logTextView.text.length-1, 0)];
+    });
+}
+- (void)screenCaptureChanged:(NSNotification *)note {
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"ExecutorHideRecording"]) return;
+    BOOL captured = UIScreen.mainScreen.isCaptured;
+    self.hidden = captured;
+}
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
 
 // ============================================================
 // Compile
@@ -2233,10 +2353,8 @@ UIView
     }
 
 
-    NSLog(
-        @"[Executor] Compile requested for %@",
-        self.activeScript.title
-    );
+    NSLog(@"[Executor] Compile requested for %@", self.activeScript.title);
+    [self appendLog:[NSString stringWithFormat:@"[Executor] Compile requested for %@\n", self.activeScript.title ?: @"Untitled"]];
 
 
     NSLog(
@@ -2269,6 +2387,8 @@ UIView
 - (void)executeScript {
 
     [self dismissKeyboard];
+    if (self.activeScript && ![self.executedScripts containsObject:self.activeScript]) [self.executedScripts addObject:self.activeScript];
+    [self appendLog:[NSString stringWithFormat:@"[Executor] Execute: %@\n", self.activeScript.title ?: @"Untitled"]];
 
 
     if (!self.activeScript) {
