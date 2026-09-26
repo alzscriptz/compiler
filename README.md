@@ -1,15 +1,37 @@
 # iOS Dylib Compiler
 
-Remote compiler that builds real arm64 iOS `.dylib` files using GitHub Actions macOS runners + official Xcode.
+Real arm64 iOS `.dylib` compiler powered by GitHub Actions macOS runners + official Xcode.
 
-## How it works
+**Live frontend:** https://ios-dylib-compiler-alzscriptzs-projects.vercel.app
 
-1. Trigger the workflow via `repository_dispatch` or manual `workflow_dispatch`
-2. Runner uses real Xcode + iOS SDK
-3. Compiles your Objective-C / C source into an arm64 `.dylib`
-4. Uploads the dylib as a workflow artifact (downloadable for 3 days)
+## What it does
 
-## Trigger via API (for the website)
+- Accepts Objective-C / C source
+- Builds a real **arm64 iOS** dynamic library (not simulator)
+- Gives you a downloadable `.dylib`
+- Designed for use with tools like LiveContainer / KSign for injection
+
+## Repo structure
+
+| Path | Description |
+|------|-------------|
+| `.github/workflows/build-dylib.yml` | The actual compiler workflow |
+| `examples/hello.m` | Simple example source |
+| `web/` | Frontend UI (deployed on Vercel) |
+
+## How to use the website
+
+1. Open the live site: https://ios-dylib-compiler-alzscriptzs-projects.vercel.app
+2. Create a **fine-grained GitHub PAT** with access only to this repo:
+   - **Contents**: Read
+   - **Actions**: Read and Write
+   - **Metadata**: Read
+3. Paste the PAT into the page
+4. Paste your source code
+5. Click **Compile dylib**
+6. Wait ~1-3 minutes, then download the zip
+
+## Manual trigger (curl)
 
 ```bash
 curl -X POST \
@@ -26,13 +48,15 @@ curl -X POST \
   }'
 ```
 
+Then go to the Actions tab and download the artifact.
+
 ## Notes
 
-- Output is a real arm64 iOS dylib (not simulator).
-- For injection into games/apps people commonly use tools like LiveContainer or KSign after obtaining the dylib.
-- This repo only compiles. Signing / injection / sideloading is left to the user and their preferred tools.
-- Free GitHub accounts have limited macOS minutes. Don't spam builds.
+- This only **compiles** the dylib. Injection / signing / packaging is handled by your preferred tools (LiveContainer, KSign, etc.).
+- Free GitHub accounts have limited macOS minutes. Don’t spam builds.
+- The frontend stores the PAT only in your browser (never sent to any third-party server except GitHub).
 
-## Local test
+## Security
 
-You can also run the workflow manually from the Actions tab and paste source code.
+The current frontend is intended for **personal use**.  
+If you ever want a public version, we should move the PAT into a Vercel serverless function.
