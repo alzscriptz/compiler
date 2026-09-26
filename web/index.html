@@ -103,7 +103,14 @@ void example_function(void) {
     }
 
     function toBase64(str) {
-      return btoa(unescape(encodeURIComponent(str)));
+      const bytes = new TextEncoder().encode(str);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(binary);
+    }
+
+    async function githubRequest(url, options) {
+      return fetch(url, { ...options, headers: { 'Accept': 'application/vnd.github+json', 'Authorization': `Bearer ${options.token}`, 'X-GitHub-Api-Version': '2022-11-28', ...(options.headers || {}) } });
     }
 
     async function startBuild() {
@@ -127,24 +134,26 @@ void example_function(void) {
       const triggerTime = Date.now();
 
       try {
-        // 1. Trigger with base64 source (avoids escaping problems)
-        log('Sending repository_dispatch (source as base64)...');
-        const triggerRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/dispatches`, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/vnd.github+json',
-            'Authorization': `Bearer ${pat}`,
-            'X-GitHub-Api-Version': '2022-11-28'
-          },
-          body: JSON.stringify({
-            event_type: 'build-dylib',
-            client_payload: {
-              source_b64: toBase64(source),
-              filename: filename
-            }
-          })
-        });
+        // 1. Upload source to a dedicated branch; repository_dispatch only carries a commit SHA.
+        log('Uploading source to GitHub build-source branch...');
+        const branch = 'build-source';
+        const sourcePath = 'src/lib.m';
+        const sourceB64 = toBase64(source);
+        let existingSha = null;
+        const getRes = await githubRequest(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${sourcePath}?ref=${encodeURIComponent(branch)}`, {method:'GET', token:pat});
+        if (getRes.ok) existingSha = (await getRes.json()).sha || null;
+        else if (getRes.status !== 404) throw new Error(`Could not inspect source (${getRes.status})`);
+        const body = {message:`build: upload source ${new Date().toISOString()}`, content:sourceB64, branch:branch};
+        if (existingSha) body.sha = existingSha;
+        const uploadRes = await githubRequest(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${sourcePath}`, {method:'PUT', token:pat, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        if (!uploadRes.ok) { const err=await uploadRes.text(); throw new Error(`Source upload failed (${uploadRes.status}): ${err}`); }
+        const sourceRef = (await uploadRes.json()).commit?.sha;
+        if (!sourceRef) throw new Error('GitHub did not return the source commit SHA');
+        log(`Source committed at ${sourceRef.slice(0,12)}`);
 
+        // 2. Dispatch only a tiny payload.
+        log('Triggering build...');
+        const triggerRes = await githubRequest(`https://api.github.com/repos/${OWNER}/${REPO}/dispatches`, {method:'POST', token:pat, headers:{'Content-Type':'application/json'}, body:JSON.stringify({event_type:'build-dylib',client_payload:{source_ref:sourceRef,filename:filename}})});
         if (triggerRes.status !== 204) {
           const err = await triggerRes.text();
           throw new Error(`Trigger failed (${triggerRes.status}): ${err}`);
