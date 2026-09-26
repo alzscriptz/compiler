@@ -85,6 +85,45 @@ jobs:
           # ternary fallbacks where the other operand is an Objective-C object.
           perl -0pi -e 's/(\?\s*:\s*)""/$1\@""/g; s/(\?\?\s*)""/$1\@""/g' src/lib.m
 
+          # Repair the known embedded-interpreter layout produced by older
+          # compiler UI versions: the interpreter must be declared before the
+          # ExecutorOverlayView implementation, not appended after its constructor.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("src/lib.m")
+          s = p.read_text(encoding="utf-8")
+          first = s.find("@interface ExecutorOverlayView")
+          second = s.find("@interface ExecutorOverlayView", first + 10) if first >= 0 else -1
+          env = s.find("@interface OCIEnvironment")
+          ctor = s.find("#pragma mark - Constructor")
+          last_end = s.rfind("@end")
+
+          if first >= 0 and second >= 0 and env > ctor >= 0 and last_end > second:
+              clean_ctor = '''#pragma mark - Constructor
+
+__attribute__((constructor))
+static void initializeHook(void)
+{
+    dispatch_async(
+        dispatch_get_main_queue(),
+        ^{
+            attachOverlayToWindow();
+        }
+    );
+}
+
+'''
+              interpreter = s[env:second]
+              global_tail = s[last_end + len("@end"):]
+              s = s[:ctor] + clean_ctor + interpreter + global_tail
+              p.write_text(s, encoding="utf-8")
+              echo = "Repaired legacy embedded-interpreter layout."
+              print(echo)
+
+          print(f"Final source size: {p.stat().st_size} bytes")
+          PY
+
           echo "Source size: $(wc -c < src/lib.m) bytes"
 
       - name: Validate Objective-C source
