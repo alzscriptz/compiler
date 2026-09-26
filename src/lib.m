@@ -2,6 +2,21 @@
 #import <QuartzCore/QuartzCore.h>
 
 // ============================================================
+// Forward Declarations
+// ============================================================
+
+@class ExecutorOverlayView;
+
+static UIWindow *FindBestWindowForOverlay(void);
+static ExecutorOverlayView *FindExistingOverlay(UIWindow *window);
+static void AttachOverlayAttempt(NSUInteger attempt);
+static void attachOverlayToWindow(void);
+static void ExecutorUncaughtExceptionHandler(NSException *exception);
+
+static __weak ExecutorOverlayView *gExecutorOverlay = nil;
+
+
+// ============================================================
 // Script Model
 // ============================================================
 
@@ -54,16 +69,22 @@ UIView
 @property (nonatomic, strong) NSMutableArray<ScriptModel *> *homeScripts;
 @property (nonatomic, strong) NSMutableArray<ScriptModel *> *editorScripts;
 @property (nonatomic, strong) ScriptModel *activeScript;
+
 @property (nonatomic, assign) NSInteger newScriptTargetSection;
 @property (nonatomic, assign) NSUInteger nextCreationOrder;
+
 @property (nonatomic, strong) UIButton *minimizeButton;
+
 @property (nonatomic, strong) UIView *logPanel;
 @property (nonatomic, strong) UIView *settingsPanel;
 @property (nonatomic, strong) UITextView *logTextView;
+
 @property (nonatomic, strong) UISwitch *hideRecordingSwitch;
 @property (nonatomic, strong) UISegmentedControl *minimizeShapeControl;
+
 @property (nonatomic, assign) NSInteger minimizeShape;
 @property (nonatomic, assign) BOOL cleanExecutionOnNext;
+
 @property (nonatomic, strong) NSMutableArray<ScriptModel *> *executedScripts;
 
 @property (nonatomic, strong) NSMutableArray<UIButton *> *sidebarButtons;
@@ -88,13 +109,34 @@ UIView
 
         self.userInteractionEnabled = YES;
 
-        self.homeScripts = [NSMutableArray array];
-        self.editorScripts = [NSMutableArray array];
-        self.executedScripts = [NSMutableArray array];
+        self.homeScripts =
+            [NSMutableArray array];
+
+        self.editorScripts =
+            [NSMutableArray array];
+
+        self.executedScripts =
+            [NSMutableArray array];
+
         self.nextCreationOrder = 1;
-        self.minimizeShape = [[NSUserDefaults standardUserDefaults] integerForKey:@"ExecutorMinimizeShape"];
+
+        self.minimizeShape =
+            [[NSUserDefaults standardUserDefaults]
+                integerForKey:@"ExecutorMinimizeShape"];
+
+        if (self.minimizeShape < 0 ||
+            self.minimizeShape > 2) {
+
+            self.minimizeShape = 0;
+        }
+
         self.newScriptTargetSection = 0;
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(screenCaptureChanged:) name:UIScreenCapturedDidChangeNotification object:nil];
+
+        [[NSNotificationCenter defaultCenter]
+            addObserver:self
+               selector:@selector(screenCaptureChanged:)
+                   name:UIScreenCapturedDidChangeNotification
+                 object:nil];
 
         self.sidebarButtons =
             [NSMutableArray array];
@@ -111,6 +153,7 @@ UIView
 // ============================================================
 
 - (UIColor *)panelColor {
+
     return
         [UIColor colorWithRed:0.10
                         green:0.10
@@ -120,6 +163,7 @@ UIView
 
 
 - (UIColor *)cardColor {
+
     return
         [UIColor colorWithRed:0.15
                         green:0.15
@@ -129,6 +173,7 @@ UIView
 
 
 - (UIColor *)borderColor {
+
     return
         [UIColor colorWithWhite:0.30
                           alpha:0.55];
@@ -136,6 +181,7 @@ UIView
 
 
 - (void)dismissKeyboard {
+
     [self endEditing:YES];
 }
 
@@ -174,7 +220,9 @@ UIView
         [self panelColor];
 
     self.sidebarContainer.layer.cornerRadius = 16.0;
+
     self.sidebarContainer.layer.borderWidth = 1.0;
+
     self.sidebarContainer.layer.borderColor =
         [self borderColor].CGColor;
 
@@ -221,11 +269,9 @@ UIView
             ? [UIColor systemBlueColor]
             : [UIColor colorWithWhite:0.70 alpha:1.0];
 
-
         [button addTarget:self
                    action:@selector(sidebarTabTapped:)
          forControlEvents:UIControlEventTouchUpInside];
-
 
         [self.sidebarContainer addSubview:button];
 
@@ -254,7 +300,9 @@ UIView
         [self panelColor];
 
     self.toggleButton.layer.cornerRadius = 28.0;
+
     self.toggleButton.layer.borderWidth = 1.5;
+
     self.toggleButton.layer.borderColor =
         [self borderColor].CGColor;
 
@@ -266,11 +314,9 @@ UIView
     self.toggleButton.tintColor =
         [UIColor whiteColor];
 
-
     [self.toggleButton addTarget:self
                           action:@selector(toggleMainUI)
                 forControlEvents:UIControlEventTouchUpInside];
-
 
     [self addSubview:self.toggleButton];
 
@@ -293,7 +339,9 @@ UIView
         [self panelColor];
 
     self.mainPanelContainer.layer.cornerRadius = 20.0;
+
     self.mainPanelContainer.layer.borderWidth = 1.0;
+
     self.mainPanelContainer.layer.borderColor =
         [self borderColor].CGColor;
 
@@ -308,6 +356,7 @@ UIView
 
 
     self.homeSectionView.hidden = NO;
+
     self.editorSectionView.hidden = YES;
 }
 
@@ -333,7 +382,7 @@ UIView
 
 
     // --------------------------------------------------------
-    // Section 1 has + New
+    // Section 1 + New
     // --------------------------------------------------------
 
     UIButton *newButton =
@@ -357,7 +406,9 @@ UIView
         [UIColor colorWithWhite:0.20 alpha:0.8];
 
     newButton.layer.cornerRadius = 16.0;
+
     newButton.layer.borderWidth = 1.0;
+
     newButton.layer.borderColor =
         [self borderColor].CGColor;
 
@@ -387,7 +438,6 @@ UIView
     [self.homeSectionView
         addSubview:self.homeGridScrollView];
 
-
     [self refreshHomeGrid];
 }
 
@@ -399,7 +449,7 @@ UIView
 - (void)refreshHomeGrid {
 
     for (UIView *view
-         in self.homeGridScrollView.subviews) {
+         in [self.homeGridScrollView.subviews copy]) {
 
         [view removeFromSuperview];
     }
@@ -452,7 +502,9 @@ UIView
             [self cardColor];
 
         card.layer.cornerRadius = 13.0;
+
         card.layer.borderWidth = 1.0;
+
         card.layer.borderColor =
             [self borderColor].CGColor;
 
@@ -535,9 +587,7 @@ UIView
 
 
         // ----------------------------------------------------
-        // Card actions
-        //
-        // Play | Copy | Favourite | Share | BIN
+        // Card Actions
         // ----------------------------------------------------
 
         NSArray *icons = @[
@@ -614,7 +664,6 @@ UIView
                        action:@selector(homeCardAction:)
              forControlEvents:UIControlEventTouchUpInside];
 
-
             [card addSubview:button];
 
             actionX +=
@@ -661,6 +710,7 @@ UIView
 
     if (scriptIndex < 0 ||
         scriptIndex >= self.homeScripts.count) {
+
         return;
     }
 
@@ -672,49 +722,88 @@ UIView
     switch (action) {
 
         case 0:
-            // Execute
+
             self.activeScript = script;
+
             [self executeScript];
+
             break;
 
 
         case 1:
-            // Copy
+
             [UIPasteboard generalPasteboard].string =
                 script.code ?: @"";
+
             break;
 
 
         case 2:
-            // Favourite
+
             script.isFavorite =
                 !script.isFavorite;
 
             self.activeScript = script;
 
-            [self.homeScripts sortUsingComparator:^NSComparisonResult(ScriptModel *a, ScriptModel *b) {
-                    if (a.isFavorite != b.isFavorite) return a.isFavorite ? NSOrderedAscending : NSOrderedDescending;
-                    return a.creationOrder < b.creationOrder ? NSOrderedAscending : (a.creationOrder > b.creationOrder ? NSOrderedDescending : NSOrderedSame);
-            }];
+
+            [self.homeScripts
+                sortUsingComparator:
+                    ^NSComparisonResult(
+                        ScriptModel *a,
+                        ScriptModel *b
+                    ) {
+
+                        if (a.isFavorite != b.isFavorite) {
+
+                            return a.isFavorite
+                                ? NSOrderedAscending
+                                : NSOrderedDescending;
+                        }
+
+
+                        if (a.creationOrder <
+                            b.creationOrder) {
+
+                            return NSOrderedAscending;
+                        }
+
+
+                        if (a.creationOrder >
+                            b.creationOrder) {
+
+                            return NSOrderedDescending;
+                        }
+
+
+                        return NSOrderedSame;
+                    }];
+
+
             [self refreshHomeGrid];
+
             [self refreshFileList];
+
             [self loadActiveScriptToEditor];
+
             break;
 
 
         case 3:
-            // Share
+
             [self shareScript:script];
+
             break;
 
 
         case 4:
-            // Delete
+
             [self deleteScript:script];
+
             break;
 
 
         default:
+
             break;
     }
 }
@@ -784,11 +873,14 @@ UIView
 - (void)openNewScriptModal {
 
     self.newScriptTargetSection = 0;
+
     [self dismissKeyboard];
 
 
     if (self.createScriptModalView) {
-        [self.createScriptModalView removeFromSuperview];
+
+        [self.createScriptModalView
+            removeFromSuperview];
     }
 
 
@@ -814,7 +906,9 @@ UIView
                         alpha:0.99];
 
     self.createScriptModalView.layer.cornerRadius = 17.0;
+
     self.createScriptModalView.layer.borderWidth = 1.0;
+
     self.createScriptModalView.layer.borderColor =
         [self borderColor].CGColor;
 
@@ -829,8 +923,11 @@ UIView
                     25.0
                 )];
 
-    header.text = @"Create New Script";
-    header.textColor = [UIColor whiteColor];
+    header.text =
+        @"Create New Script";
+
+    header.textColor =
+        [UIColor whiteColor];
 
     header.font =
         [UIFont systemFontOfSize:15.0
@@ -856,13 +953,15 @@ UIView
             [UIImage systemImageNamed:@"xmark"]
         forState:UIControlStateNormal];
 
-    close.tintColor = [UIColor whiteColor];
+    close.tintColor =
+        [UIColor whiteColor];
 
     [close addTarget:self
               action:@selector(closeNewScriptModal)
     forControlEvents:UIControlEventTouchUpInside];
 
-    [self.createScriptModalView addSubview:close];
+    [self.createScriptModalView
+        addSubview:close];
 
 
     // --------------------------------------------------------
@@ -891,7 +990,8 @@ UIView
     self.modalTitleField.layer.cornerRadius = 8.0;
 
     self.modalTitleField.leftView =
-        [[UIView alloc] initWithFrame:CGRectMake(0,0,8,1)];
+        [[UIView alloc]
+            initWithFrame:CGRectMake(0,0,8,1)];
 
     self.modalTitleField.leftViewMode =
         UITextFieldViewModeAlways;
@@ -899,7 +999,8 @@ UIView
     self.modalTitleField.returnKeyType =
         UIReturnKeyDone;
 
-    self.modalTitleField.delegate = self;
+    self.modalTitleField.delegate =
+        self;
 
     [self.createScriptModalView
         addSubview:self.modalTitleField];
@@ -931,7 +1032,8 @@ UIView
     self.modalImageField.layer.cornerRadius = 8.0;
 
     self.modalImageField.leftView =
-        [[UIView alloc] initWithFrame:CGRectMake(0,0,8,1)];
+        [[UIView alloc]
+            initWithFrame:CGRectMake(0,0,8,1)];
 
     self.modalImageField.leftViewMode =
         UITextFieldViewModeAlways;
@@ -939,7 +1041,8 @@ UIView
     self.modalImageField.returnKeyType =
         UIReturnKeyDone;
 
-    self.modalImageField.delegate = self;
+    self.modalImageField.delegate =
+        self;
 
     [self.createScriptModalView
         addSubview:self.modalImageField];
@@ -947,8 +1050,6 @@ UIView
 
     // --------------------------------------------------------
     // Code
-    //
-    // This field intentionally keeps keyboard support.
     // --------------------------------------------------------
 
     self.modalCodeView =
@@ -977,7 +1078,8 @@ UIView
 
     self.modalCodeView.layer.cornerRadius = 8.0;
 
-    self.modalCodeView.delegate = self;
+    self.modalCodeView.delegate =
+        self;
 
     self.modalCodeView.text =
         @"// Enter code here";
@@ -1016,7 +1118,8 @@ UIView
              action:@selector(saveNewScriptFromModal)
    forControlEvents:UIControlEventTouchUpInside];
 
-    [self.createScriptModalView addSubview:save];
+    [self.createScriptModalView
+        addSubview:save];
 
 
     [self addSubview:self.createScriptModalView];
@@ -1033,16 +1136,22 @@ UIView
 
     [self dismissKeyboard];
 
-    [self.createScriptModalView removeFromSuperview];
+    [self.createScriptModalView
+        removeFromSuperview];
 
     self.createScriptModalView = nil;
 }
 
 
 - (void)openNewScriptModalForEditor {
+
     [self openNewScriptModal];
+
+    // openNewScriptModal resets this to 0.
+    // Set it AFTER opening the modal.
     self.newScriptTargetSection = 1;
 }
+
 
 // ============================================================
 // Save Script
@@ -1053,12 +1162,18 @@ UIView
     [self dismissKeyboard];
 
 
+    NSUInteger count =
+        self.newScriptTargetSection == 0
+        ? self.homeScripts.count
+        : self.editorScripts.count;
+
+
     NSString *title =
         self.modalTitleField.text.length
         ? self.modalTitleField.text
         : [NSString stringWithFormat:
             @"title.%lu",
-            (unsigned long)(self.newScriptTargetSection == 0 ? self.homeScripts.count : self.editorScripts.count) + 1];
+            (unsigned long)count + 1];
 
 
     ScriptModel *script =
@@ -1068,7 +1183,8 @@ UIView
     script.scriptId =
         [[NSUUID UUID] UUIDString];
 
-    script.title = title;
+    script.title =
+        title;
 
     script.imageUrl =
         self.modalImageField.text ?: @"";
@@ -1077,13 +1193,20 @@ UIView
         self.modalCodeView.text ?: @"";
 
     script.isFavorite = NO;
-    script.creationOrder = self.nextCreationOrder++;
+
+    script.creationOrder =
+        self.nextCreationOrder++;
+
 
     if (self.newScriptTargetSection == 0) {
+
         [self.homeScripts addObject:script];
+
     } else {
+
         [self.editorScripts addObject:script];
     }
+
 
     self.activeScript = script;
 
@@ -1099,7 +1222,7 @@ UIView
 
 
 // ============================================================
-// DELETE SCRIPT
+// Delete Script
 // ============================================================
 
 - (void)deleteScript:(ScriptModel *)script {
@@ -1140,13 +1263,24 @@ UIView
                         (self.activeScript == script);
 
 
-                    NSMutableArray *owner = [self.homeScripts containsObject:script] ? self.homeScripts : self.editorScripts;
+                    NSMutableArray *owner =
+                        [self.homeScripts
+                            containsObject:script]
+                        ? self.homeScripts
+                        : self.editorScripts;
+
+
                     [owner removeObject:script];
 
+
                     if (wasActive) {
+
                         self.activeScript = nil;
+
                         if (owner.count > 0) {
-                            self.activeScript = owner.lastObject;
+
+                            self.activeScript =
+                                owner.lastObject;
                         }
                     }
 
@@ -1160,6 +1294,7 @@ UIView
 
 
     [alert addAction:cancel];
+
     [alert addAction:delete];
 
 
@@ -1199,26 +1334,47 @@ UIView
 
 
     // --------------------------------------------------------
-    // IMPORTANT:
-    // No + New button here.
-    //
-    // Scripts are created ONLY from Section 1.
+    // Section 2 has its OWN independent + New.
     // --------------------------------------------------------
 
+    UIButton *editorNewButton =
+        [UIButton buttonWithType:UIButtonTypeSystem];
 
-    // --------------------------------------------------------
-    // Section 2 + New (independent editor library)
-    // --------------------------------------------------------
-    UIButton *editorNewButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    editorNewButton.frame = CGRectMake(8.0, 10.0, 164.0, 32.0);
-    [editorNewButton setTitle:@"+ New" forState:UIControlStateNormal];
-    [editorNewButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    editorNewButton.backgroundColor = [UIColor colorWithWhite:0.20 alpha:0.8];
+    editorNewButton.frame =
+        CGRectMake(
+            8.0,
+            10.0,
+            164.0,
+            32.0
+        );
+
+    [editorNewButton
+        setTitle:@"+ New"
+        forState:UIControlStateNormal];
+
+    [editorNewButton
+        setTitleColor:[UIColor whiteColor]
+        forState:UIControlStateNormal];
+
+    editorNewButton.backgroundColor =
+        [UIColor colorWithWhite:0.20
+                          alpha:0.8];
+
     editorNewButton.layer.cornerRadius = 16.0;
+
     editorNewButton.layer.borderWidth = 1.0;
-    editorNewButton.layer.borderColor = [self borderColor].CGColor;
-    [editorNewButton addTarget:self action:@selector(openNewScriptModalForEditor) forControlEvents:UIControlEventTouchUpInside];
-    [self.editorSectionView addSubview:editorNewButton];
+
+    editorNewButton.layer.borderColor =
+        [self borderColor].CGColor;
+
+    [editorNewButton
+        addTarget:self
+           action:@selector(openNewScriptModalForEditor)
+ forControlEvents:UIControlEventTouchUpInside];
+
+    [self.editorSectionView
+        addSubview:editorNewButton];
+
 
     // --------------------------------------------------------
     // File List
@@ -1251,9 +1407,11 @@ UIView
                 )];
 
     divider.backgroundColor =
-        [UIColor colorWithWhite:0.3 alpha:0.5];
+        [UIColor colorWithWhite:0.3
+                          alpha:0.5];
 
-    [self.editorSectionView addSubview:divider];
+    [self.editorSectionView
+        addSubview:divider];
 
 
     // --------------------------------------------------------
@@ -1277,7 +1435,8 @@ UIView
         [UIColor whiteColor];
 
     self.titleField.backgroundColor =
-        [UIColor colorWithWhite:0.12 alpha:0.9];
+        [UIColor colorWithWhite:0.12
+                          alpha:0.9];
 
     self.titleField.layer.cornerRadius = 15.0;
 
@@ -1289,7 +1448,8 @@ UIView
     self.titleField.returnKeyType =
         UIReturnKeyDone;
 
-    self.titleField.delegate = self;
+    self.titleField.delegate =
+        self;
 
     [self.editorSectionView
         addSubview:self.titleField];
@@ -1297,6 +1457,8 @@ UIView
 
     // --------------------------------------------------------
     // Header Actions
+    //
+    // Star | Copy | Paste | Play
     // --------------------------------------------------------
 
     CGFloat actionX =
@@ -1332,13 +1494,16 @@ UIView
             forState:UIControlStateNormal];
 
         button.tintColor =
-            [UIColor colorWithWhite:0.85 alpha:1.0];
+            [UIColor colorWithWhite:0.85
+                              alpha:1.0];
 
         button.tag = i;
 
 
         if (i == 0) {
-            self.favoriteHeaderBtn = button;
+
+            self.favoriteHeaderBtn =
+                button;
         }
 
 
@@ -1347,7 +1512,8 @@ UIView
          forControlEvents:UIControlEventTouchUpInside];
 
 
-        [self.editorSectionView addSubview:button];
+        [self.editorSectionView
+            addSubview:button];
     }
 
 
@@ -1374,14 +1540,16 @@ UIView
                 )];
 
     editorBox.backgroundColor =
-        [UIColor colorWithWhite:0.06 alpha:0.85];
+        [UIColor colorWithWhite:0.06
+                          alpha:0.85];
 
     editorBox.layer.cornerRadius = 15.0;
 
     editorBox.layer.borderWidth = 1.0;
 
     editorBox.layer.borderColor =
-        [UIColor colorWithWhite:0.22 alpha:0.5].CGColor;
+        [UIColor colorWithWhite:0.22
+                          alpha:0.5].CGColor;
 
     [self.editorSectionView
         addSubview:editorBox];
@@ -1411,7 +1579,8 @@ UIView
                         size:12.0]
         ?: [UIFont systemFontOfSize:12.0];
 
-    self.codeTextView.delegate = self;
+    self.codeTextView.delegate =
+        self;
 
     self.codeTextView.alwaysBounceVertical = YES;
 
@@ -1433,11 +1602,13 @@ UIView
             32.0
         );
 
-    [compile setTitle:@"Compile"
-             forState:UIControlStateNormal];
+    [compile
+        setTitle:@"Compile"
+        forState:UIControlStateNormal];
 
-    [compile setTitleColor:[UIColor whiteColor]
-                  forState:UIControlStateNormal];
+    [compile
+        setTitleColor:[UIColor whiteColor]
+        forState:UIControlStateNormal];
 
     compile.backgroundColor =
         [UIColor systemBlueColor];
@@ -1462,7 +1633,7 @@ UIView
 - (void)refreshFileList {
 
     for (UIView *view
-         in self.fileListScrollView.subviews) {
+         in [self.fileListScrollView.subviews copy]) {
 
         [view removeFromSuperview];
     }
@@ -1483,10 +1654,6 @@ UIView
             self.activeScript == script;
 
 
-        // ----------------------------------------------------
-        // Script row
-        // ----------------------------------------------------
-
         UIView *row =
             [[UIView alloc]
                 initWithFrame:
@@ -1504,10 +1671,6 @@ UIView
 
         row.layer.cornerRadius = 10.0;
 
-
-        // ----------------------------------------------------
-        // Title button
-        // ----------------------------------------------------
 
         UIButton *titleButton =
             [UIButton buttonWithType:UIButtonTypeSystem];
@@ -1529,7 +1692,8 @@ UIView
             setTitleColor:
                 active
                 ? [UIColor whiteColor]
-                : [UIColor colorWithWhite:0.78 alpha:1.0]
+                : [UIColor colorWithWhite:0.78
+                                    alpha:1.0]
             forState:UIControlStateNormal];
 
         titleButton.titleLabel.font =
@@ -1541,19 +1705,13 @@ UIView
 
         titleButton.tag = i;
 
-        [titleButton addTarget:self
-                        action:@selector(selectScriptFromFileList:)
-              forControlEvents:UIControlEventTouchUpInside];
-
+        [titleButton
+            addTarget:self
+               action:@selector(selectScriptFromFileList:)
+     forControlEvents:UIControlEventTouchUpInside];
 
         [row addSubview:titleButton];
 
-
-        // ----------------------------------------------------
-        // Delete button
-        //
-        // Right side of title.
-        // ----------------------------------------------------
 
         UIButton *trash =
             [UIButton buttonWithType:UIButtonTypeSystem];
@@ -1576,18 +1734,12 @@ UIView
 
         trash.tag = i;
 
-
         [trash addTarget:self
                   action:@selector(deleteFileListScript:)
         forControlEvents:UIControlEventTouchUpInside];
 
-
         [row addSubview:trash];
 
-
-        // ----------------------------------------------------
-        // Long press = delete
-        // ----------------------------------------------------
 
         UILongPressGestureRecognizer *longPress =
             [[UILongPressGestureRecognizer alloc]
@@ -1601,7 +1753,8 @@ UIView
         [row addGestureRecognizer:longPress];
 
 
-        [self.fileListScrollView addSubview:row];
+        [self.fileListScrollView
+            addSubview:row];
 
 
         y += 44.0;
@@ -1620,8 +1773,6 @@ UIView
 
     // ========================================================
     // Favourites
-    //
-    // ALL favourites are shown in order.
     // ========================================================
 
     if (!self.favoriteScrollView) {
@@ -1637,7 +1788,8 @@ UIView
                     )];
 
         self.favoriteScrollView.backgroundColor =
-            [UIColor colorWithWhite:0.08 alpha:0.6];
+            [UIColor colorWithWhite:0.08
+                              alpha:0.6];
 
         self.favoriteScrollView.layer.cornerRadius = 10.0;
 
@@ -1646,7 +1798,6 @@ UIView
     }
 
 
-    // Recalculate it in case layout changed.
     self.favoriteScrollView.frame =
         CGRectMake(
             8.0,
@@ -1657,7 +1808,7 @@ UIView
 
 
     for (UIView *view
-         in self.favoriteScrollView.subviews) {
+         in [self.favoriteScrollView.subviews copy]) {
 
         [view removeFromSuperview];
     }
@@ -1673,10 +1824,12 @@ UIView
                     20.0
                 )];
 
-    favoriteLabel.text = @"Favourite";
+    favoriteLabel.text =
+        @"Favourite";
 
     favoriteLabel.textColor =
-        [UIColor colorWithWhite:0.65 alpha:1.0];
+        [UIColor colorWithWhite:0.65
+                          alpha:1.0];
 
     favoriteLabel.font =
         [UIFont systemFontOfSize:11.0
@@ -1735,7 +1888,8 @@ UIView
 
         [favorite
             setTitleColor:
-                [UIColor colorWithWhite:0.88 alpha:1.0]
+                [UIColor colorWithWhite:0.88
+                                  alpha:1.0]
             forState:UIControlStateNormal];
 
         favorite.titleLabel.font =
@@ -1747,9 +1901,10 @@ UIView
         favorite.tag = i;
 
 
-        [favorite addTarget:self
-                     action:@selector(favoritePressed:)
-           forControlEvents:UIControlEventTouchUpInside];
+        [favorite
+            addTarget:self
+               action:@selector(favoritePressed:)
+     forControlEvents:UIControlEventTouchUpInside];
 
 
         [self.favoriteScrollView
@@ -1772,10 +1927,12 @@ UIView
                         25.0
                     )];
 
-        empty.text = @"No favourites";
+        empty.text =
+            @"No favourites";
 
         empty.textColor =
-            [UIColor colorWithWhite:0.45 alpha:1.0];
+            [UIColor colorWithWhite:0.45
+                              alpha:1.0];
 
         empty.font =
             [UIFont systemFontOfSize:10.0];
@@ -1785,7 +1942,6 @@ UIView
     }
 
 
-    // Scroll when many favourites exist.
     self.favoriteScrollView.contentSize =
         CGSizeMake(
             164.0,
@@ -1806,11 +1962,13 @@ UIView
     [self dismissKeyboard];
 
 
-    NSInteger index = sender.tag;
+    NSInteger index =
+        sender.tag;
 
 
     if (index < 0 ||
         index >= self.editorScripts.count) {
+
         return;
     }
 
@@ -1834,16 +1992,19 @@ UIView
     [self dismissKeyboard];
 
 
-    NSInteger index = sender.tag;
+    NSInteger index =
+        sender.tag;
 
 
     if (index < 0 ||
         index >= self.editorScripts.count) {
+
         return;
     }
 
 
-    [self deleteScript:self.editorScripts[index]];
+    [self deleteScript:
+        self.editorScripts[index]];
 }
 
 
@@ -1856,6 +2017,7 @@ UIView
 
     if (gesture.state !=
         UIGestureRecognizerStateBegan) {
+
         return;
     }
 
@@ -1875,6 +2037,7 @@ UIView
         if (![subview
                 isKindOfClass:
                     [UIButton class]]) {
+
             continue;
         }
 
@@ -1911,11 +2074,13 @@ UIView
     [self dismissKeyboard];
 
 
-    NSInteger index = sender.tag;
+    NSInteger index =
+        sender.tag;
 
 
     if (index < 0 ||
         index >= self.editorScripts.count) {
+
         return;
     }
 
@@ -1948,7 +2113,8 @@ UIView
             forState:UIControlStateNormal];
 
         self.favoriteHeaderBtn.tintColor =
-            [UIColor colorWithWhite:0.85 alpha:1.0];
+            [UIColor colorWithWhite:0.85
+                              alpha:1.0];
 
         return;
     }
@@ -1959,7 +2125,7 @@ UIView
 
 
     self.codeTextView.text =
-        self.activeScript.code ?: "";
+        self.activeScript.code ?: @"";
 
 
     [self.favoriteHeaderBtn
@@ -1974,7 +2140,8 @@ UIView
     self.favoriteHeaderBtn.tintColor =
         self.activeScript.isFavorite
         ? [UIColor systemYellowColor]
-        : [UIColor colorWithWhite:0.85 alpha:1.0];
+        : [UIColor colorWithWhite:0.85
+                            alpha:1.0];
 }
 
 
@@ -2024,11 +2191,6 @@ UIView
 
         case 2: {
 
-            // Paste into code editor.
-            //
-            // Keyboard is intentionally NOT dismissed.
-            //
-
             NSString *paste =
                 [UIPasteboard generalPasteboard].string;
 
@@ -2046,7 +2208,6 @@ UIView
                 }
             }
 
-
             break;
         }
 
@@ -2061,6 +2222,7 @@ UIView
 
 
         default:
+
             break;
     }
 }
@@ -2073,7 +2235,6 @@ UIView
 - (BOOL)textFieldShouldReturn:
     (UITextField *)textField {
 
-    // Normal text fields dismiss keyboard.
     [textField resignFirstResponder];
 
     return YES;
@@ -2110,13 +2271,6 @@ UIView
         self.activeScript.code =
             textView.text ?: @"";
     }
-
-
-    if (textView == self.modalCodeView) {
-
-        // Keep modal script code synchronized
-        // while typing.
-    }
 }
 
 
@@ -2134,7 +2288,8 @@ UIView
          in self.sidebarButtons) {
 
         button.tintColor =
-            [UIColor colorWithWhite:0.70 alpha:1.0];
+            [UIColor colorWithWhite:0.70
+                              alpha:1.0];
     }
 
 
@@ -2145,19 +2300,38 @@ UIView
     switch (sender.tag) {
 
         case 0:
+
             self.homeSectionView.hidden = NO;
+
             self.editorSectionView.hidden = YES;
-            if (![self.homeScripts containsObject:self.activeScript]) self.activeScript = self.homeScripts.lastObject;
+
+            if (![self.homeScripts
+                    containsObject:self.activeScript]) {
+
+                self.activeScript =
+                    self.homeScripts.lastObject;
+            }
+
             [self refreshHomeGrid];
 
             break;
 
 
         case 1:
+
             self.homeSectionView.hidden = YES;
+
             self.editorSectionView.hidden = NO;
-            if (![self.editorScripts containsObject:self.activeScript]) self.activeScript = self.editorScripts.lastObject;
+
+            if (![self.editorScripts
+                    containsObject:self.activeScript]) {
+
+                self.activeScript =
+                    self.editorScripts.lastObject;
+            }
+
             [self refreshFileList];
+
             [self loadActiveScriptToEditor];
 
             break;
@@ -2166,180 +2340,892 @@ UIView
         case 2:
 
             self.homeSectionView.hidden = YES;
+
             self.editorSectionView.hidden = YES;
+
+            if (self.logPanel) {
+                self.logPanel.hidden = YES;
+            }
+
+            if (self.settingsPanel) {
+                self.settingsPanel.hidden = YES;
+            }
 
             break;
 
 
         case 3:
+
             self.homeSectionView.hidden = YES;
+
             self.editorSectionView.hidden = YES;
+
             [self showLogPanel];
+
             break;
 
+
         case 4:
+
             self.homeSectionView.hidden = YES;
+
             self.editorSectionView.hidden = YES;
+
             [self showSettingsPanel];
+
             break;
 
 
         default:
+
             break;
     }
 }
 
 
 // ============================================================
-// Toggle
+// Toggle Main UI
 // ============================================================
 
 - (void)toggleMainUI {
+
     [self dismissKeyboard];
-    BOOL hidden = self.mainPanelContainer.hidden;
+
+
+    BOOL hidden =
+        self.mainPanelContainer.hidden;
+
+
+    // --------------------------------------------------------
+    // RESTORE
+    // --------------------------------------------------------
+
     if (hidden) {
+
         self.mainPanelContainer.hidden = NO;
+
         self.sidebarContainer.hidden = NO;
+
         self.minimizeButton.hidden = YES;
+
         self.toggleButton.hidden = NO;
+
         self.userInteractionEnabled = YES;
-        self.backgroundColor = [UIColor clearColor];
-    } else {
-        self.mainPanelContainer.hidden = YES;
-        self.sidebarContainer.hidden = YES;
-        self.backgroundColor = [UIColor clearColor];
-        [self ensureMinimizeButton];
-        self.minimizeButton.hidden = NO;
-        self.toggleButton.hidden = YES;
-        // A minimized overlay must not steal touches from the host app.
-        self.userInteractionEnabled = NO;
+
+        self.backgroundColor =
+            [UIColor clearColor];
+
+        return;
     }
+
+
+    // --------------------------------------------------------
+    // MINIMIZE
+    // --------------------------------------------------------
+
+    self.mainPanelContainer.hidden = YES;
+
+    self.sidebarContainer.hidden = YES;
+
+    self.toggleButton.hidden = YES;
+
+    self.backgroundColor =
+        [UIColor clearColor];
+
+
+    [self ensureMinimizeButton];
+
+    self.minimizeButton.hidden = NO;
+
+
+    // IMPORTANT:
+    //
+    // Do NOT set userInteractionEnabled = NO.
+    //
+    // The custom hitTest: below makes every point outside
+    // the K button pass through to the host application.
+
+    self.userInteractionEnabled = YES;
 }
 
 
 // ============================================================
-// Minimize / Settings / Log helpers
+// Minimize Button
 // ============================================================
 
 - (void)ensureMinimizeButton {
-    if (self.minimizeButton) return;
-    self.minimizeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.minimizeButton.frame = CGRectMake((self.bounds.size.width - 52.0)/2.0, 18.0, 52.0, 52.0);
-    self.minimizeButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
-    self.minimizeButton.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.96];
+
+    if (self.minimizeButton) {
+
+        [self applyMinimizeShape];
+
+        return;
+    }
+
+
+    self.minimizeButton =
+        [UIButton buttonWithType:UIButtonTypeSystem];
+
+
+    self.minimizeButton.frame =
+        CGRectMake(
+            (self.bounds.size.width - 52.0) / 2.0,
+            18.0,
+            52.0,
+            52.0
+        );
+
+
+    self.minimizeButton.autoresizingMask =
+        UIViewAutoresizingFlexibleLeftMargin |
+        UIViewAutoresizingFlexibleRightMargin;
+
+
+    self.minimizeButton.backgroundColor =
+        [UIColor colorWithWhite:0.05
+                          alpha:0.96];
+
+
     self.minimizeButton.layer.borderWidth = 1.0;
-    self.minimizeButton.layer.borderColor = [self borderColor].CGColor;
-    [self.minimizeButton setTitle:@"K" forState:UIControlStateNormal];
-    [self.minimizeButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.minimizeButton.titleLabel.font = [UIFont systemFontOfSize:22.0 weight:UIFontWeightBold];
-    [self.minimizeButton addTarget:self action:@selector(toggleMainUI) forControlEvents:UIControlEventTouchUpInside];
-    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(moveMinimizeButton:)];
-    [self.minimizeButton addGestureRecognizer:pan];
+
+    self.minimizeButton.layer.borderColor =
+        [self borderColor].CGColor;
+
+
+    [self.minimizeButton
+        setTitle:@"K"
+        forState:UIControlStateNormal];
+
+
+    [self.minimizeButton
+        setTitleColor:[UIColor whiteColor]
+        forState:UIControlStateNormal];
+
+
+    self.minimizeButton.titleLabel.font =
+        [UIFont systemFontOfSize:22.0
+                          weight:UIFontWeightBold];
+
+
+    [self.minimizeButton
+        addTarget:self
+           action:@selector(toggleMainUI)
+ forControlEvents:UIControlEventTouchUpInside];
+
+
+    UIPanGestureRecognizer *pan =
+        [[UIPanGestureRecognizer alloc]
+            initWithTarget:self
+                    action:@selector(moveMinimizeButton:)];
+
+    [self.minimizeButton
+        addGestureRecognizer:pan];
+
+
     [self addSubview:self.minimizeButton];
+
+
     [self applyMinimizeShape];
 }
+
+
+// ============================================================
+// Minimize Shape
+// ============================================================
+
 - (void)applyMinimizeShape {
-    if (!self.minimizeButton) return;
+
+    if (!self.minimizeButton) {
+        return;
+    }
+
+
     switch (self.minimizeShape) {
-        case 1: self.minimizeButton.layer.cornerRadius = 8.0; break;
-        case 2: self.minimizeButton.layer.cornerRadius = 26.0; break;
-        default: self.minimizeButton.layer.cornerRadius = 16.0; break; // squircle
+
+        case 1:
+
+            // Square
+
+            self.minimizeButton.layer.cornerRadius =
+                8.0;
+
+            break;
+
+
+        case 2:
+
+            // Circle
+
+            self.minimizeButton.layer.cornerRadius =
+                26.0;
+
+            break;
+
+
+        default:
+
+            // Squircle
+
+            self.minimizeButton.layer.cornerRadius =
+                16.0;
+
+            break;
     }
-}
-- (void)moveMinimizeButton:(UIPanGestureRecognizer *)pan {
-    CGPoint t = [pan translationInView:self];
-    self.minimizeButton.center = CGPointMake(self.minimizeButton.center.x + t.x, self.minimizeButton.center.y + t.y);
-    [pan setTranslation:CGPointZero inView:self];
-    CGFloat halfW = self.minimizeButton.bounds.size.width/2.0, halfH = self.minimizeButton.bounds.size.height/2.0;
-    self.minimizeButton.center = CGPointMake(MAX(halfW, MIN(self.bounds.size.width-halfW, self.minimizeButton.center.x)), MAX(halfH, MIN(self.bounds.size.height-halfH, self.minimizeButton.center.y)));
-}
-- (void)showLogPanel {
-    if (!self.settingsPanel) {
-        self.settingsPanel = [[UIView alloc] initWithFrame:CGRectMake(95, 35, 525, 285)];
-        self.logPanel.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
-        self.logPanel.layer.cornerRadius = 18;
-        self.logTextView = [[UITextView alloc] initWithFrame:CGRectInset(self.logPanel.bounds, 10, 10)];
-        self.logTextView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        self.logTextView.backgroundColor = [UIColor blackColor];
-        self.logTextView.textColor = [UIColor colorWithWhite:0.88 alpha:1];
-        self.logTextView.font = [UIFont fontWithName:@"Menlo" size:11] ?: [UIFont systemFontOfSize:11];
-        self.logTextView.editable = NO;
-        self.logTextView.layer.cornerRadius = 12;
-        [self.logPanel addSubview:self.logTextView];
-        [self addSubview:self.logPanel];
-    }
-    self.logPanel.hidden = NO;
-    if (self.settingsPanel) self.settingsPanel.hidden = YES;
-    self.logTextView.text = self.logTextView.text.length ? self.logTextView.text : @"[Executor] Log ready…\n";
-    [self.logTextView scrollRangeToVisible:NSMakeRange(self.logTextView.text.length ? self.logTextView.text.length-1 : 0, 0)];
-}
-- (void)showSettingsPanel {
-    if (!self.logPanel) {
-        self.logPanel = [[UIView alloc] initWithFrame:CGRectMake(95, 35, 525, 285)];
-        self.logPanel.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
-        self.logPanel.layer.cornerRadius = 18;
-        [self addSubview:self.settingsPanel];
-    }
-    for (UIView *v in [self.settingsPanel.subviews copy]) [v removeFromSuperview];
-    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(18, 12, 300, 28)];
-    title.text = @"Settings"; title.textColor = UIColor.whiteColor; title.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
-    [self.settingsPanel addSubview:title];
-    UILabel *shapeLabel = [[UILabel alloc] initWithFrame:CGRectMake(18, 58, 240, 24)];
-    shapeLabel.text = @"Minimize button"; shapeLabel.textColor = UIColor.whiteColor;
-    [self.settingsPanel addSubview:shapeLabel];
-    self.minimizeShapeControl = [[UISegmentedControl alloc] initWithItems:@[@"Squircle",@"Square",@"Circle"]];
-    self.minimizeShapeControl.frame = CGRectMake(18, 88, 330, 34);
-    self.minimizeShapeControl.selectedSegmentIndex = self.minimizeShape;
-    [self.minimizeShapeControl addTarget:self action:@selector(minimizeShapeChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.settingsPanel addSubview:self.minimizeShapeControl];
-    UILabel *rec = [[UILabel alloc] initWithFrame:CGRectMake(18, 145, 300, 24)];
-    rec.text = @"Hide UI while screen recording"; rec.textColor = UIColor.whiteColor;
-    [self.settingsPanel addSubview:rec];
-    self.hideRecordingSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(365, 138, 60, 32)];
-    self.hideRecordingSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"ExecutorHideRecording"];
-    [self.hideRecordingSwitch addTarget:self action:@selector(recordingSettingChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.settingsPanel addSubview:self.hideRecordingSwitch];
-    UIButton *clean = [UIButton buttonWithType:UIButtonTypeSystem];
-    clean.frame = CGRectMake(18, 195, 180, 38); [clean setTitle:@"Clean Exe" forState:UIControlStateNormal];
-    clean.backgroundColor = [UIColor systemRedColor]; [clean setTitleColor:UIColor.whiteColor forState:UIControlStateNormal]; clean.layer.cornerRadius = 19;
-    [clean addTarget:self action:@selector(cleanExecutedScripts) forControlEvents:UIControlEventTouchUpInside];
-    [self.settingsPanel addSubview:clean];
-    self.settingsPanel.hidden = NO;
-    self.logPanel.hidden = YES;
-}
-- (void)minimizeShapeChanged:(UISegmentedControl *)sender { self.minimizeShape = sender.selectedSegmentIndex; [[NSUserDefaults standardUserDefaults] setInteger:self.minimizeShape forKey:@"ExecutorMinimizeShape"]; [self applyMinimizeShape]; }
-- (void)recordingSettingChanged:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:@"ExecutorHideRecording"]; }
-- (void)cleanExecutedScripts {
-    [self.executedScripts removeAllObjects];
-    self.activeScript = nil;
-    [self appendLog:@"[Executor] Clean Exe: execution state cleared.\n"];
-}
-- (void)appendLog:(NSString *)message {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (!self.logTextView) return;
-        NSString *line = message ?: @"";
-        self.logTextView.text = [self.logTextView.text stringByAppendingString:line];
-        if (self.logTextView.text.length) [self.logTextView scrollRangeToVisible:NSMakeRange(self.logTextView.text.length-1, 0)];
-    });
-}
-- (void)screenCaptureChanged:(NSNotification *)note {
-    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"ExecutorHideRecording"]) return;
-    BOOL captured = UIScreen.mainScreen.isCaptured;
-    self.hidden = captured;
-}
-- (void)dealloc {
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    if (self.mainPanelContainer.hidden) {
-        if (self.minimizeButton && !self.minimizeButton.hidden) {
-            CGPoint local = [self.minimizeButton convertPoint:point fromView:self];
-            if ([self.minimizeButton pointInside:local withEvent:event]) return self.minimizeButton;
+
+// ============================================================
+// Drag Minimize Button
+// ============================================================
+
+- (void)moveMinimizeButton:
+    (UIPanGestureRecognizer *)pan {
+
+    CGPoint translation =
+        [pan translationInView:self];
+
+
+    self.minimizeButton.center =
+        CGPointMake(
+            self.minimizeButton.center.x +
+                translation.x,
+            self.minimizeButton.center.y +
+                translation.y
+        );
+
+
+    [pan setTranslation:
+            CGPointZero
+          inView:self];
+
+
+    CGFloat halfW =
+        self.minimizeButton.bounds.size.width / 2.0;
+
+    CGFloat halfH =
+        self.minimizeButton.bounds.size.height / 2.0;
+
+
+    self.minimizeButton.center =
+        CGPointMake(
+            MAX(
+                halfW,
+                MIN(
+                    self.bounds.size.width - halfW,
+                    self.minimizeButton.center.x
+                )
+            ),
+            MAX(
+                halfH,
+                MIN(
+                    self.bounds.size.height - halfH,
+                    self.minimizeButton.center.y
+                )
+            )
+        );
+}
+
+
+// ============================================================
+// LOG PANEL
+// ============================================================
+
+- (void)showLogPanel {
+
+    // --------------------------------------------------------
+    // Create log panel once
+    // --------------------------------------------------------
+
+    if (!self.logPanel) {
+
+        self.logPanel =
+            [[UIView alloc]
+                initWithFrame:
+                    CGRectMake(
+                        95.0,
+                        35.0,
+                        525.0,
+                        285.0
+                    )];
+
+
+        self.logPanel.backgroundColor =
+            [UIColor colorWithWhite:0.10
+                              alpha:0.96];
+
+
+        self.logPanel.layer.cornerRadius =
+            18.0;
+
+
+        self.logPanel.layer.borderWidth =
+            1.0;
+
+
+        self.logPanel.layer.borderColor =
+            [self borderColor].CGColor;
+
+
+        self.logPanel.clipsToBounds =
+            YES;
+
+
+        // ----------------------------------------------------
+        // Black log area
+        // ----------------------------------------------------
+
+        self.logTextView =
+            [[UITextView alloc]
+                initWithFrame:
+                    CGRectInset(
+                        self.logPanel.bounds,
+                        10.0,
+                        10.0
+                    )];
+
+
+        self.logTextView.autoresizingMask =
+            UIViewAutoresizingFlexibleWidth |
+            UIViewAutoresizingFlexibleHeight;
+
+
+        self.logTextView.backgroundColor =
+            [UIColor blackColor];
+
+
+        self.logTextView.textColor =
+            [UIColor colorWithWhite:0.88
+                              alpha:1.0];
+
+
+        self.logTextView.font =
+            [UIFont fontWithName:@"Menlo"
+                            size:11.0]
+            ?: [UIFont systemFontOfSize:11.0];
+
+
+        self.logTextView.editable =
+            NO;
+
+
+        self.logTextView.selectable =
+            YES;
+
+
+        self.logTextView.layer.cornerRadius =
+            12.0;
+
+
+        self.logTextView.text =
+            @"[Executor] Log ready...\n";
+
+
+        [self.logPanel
+            addSubview:self.logTextView];
+
+
+        [self addSubview:self.logPanel];
+    }
+
+
+    // --------------------------------------------------------
+    // Visibility
+    // --------------------------------------------------------
+
+    self.logPanel.hidden =
+        NO;
+
+
+    if (self.settingsPanel) {
+
+        self.settingsPanel.hidden =
+            YES;
+    }
+
+
+    if (self.logTextView.text.length > 0) {
+
+        [self.logTextView
+            scrollRangeToVisible:
+                NSMakeRange(
+                    self.logTextView.text.length - 1,
+                    1
+                )];
+    }
+}
+
+
+// ============================================================
+// SETTINGS PANEL
+// ============================================================
+
+- (void)showSettingsPanel {
+
+    // --------------------------------------------------------
+    // Create settings panel once
+    // --------------------------------------------------------
+
+    if (!self.settingsPanel) {
+
+        self.settingsPanel =
+            [[UIView alloc]
+                initWithFrame:
+                    CGRectMake(
+                        95.0,
+                        35.0,
+                        525.0,
+                        285.0
+                    )];
+
+
+        self.settingsPanel.backgroundColor =
+            [UIColor colorWithWhite:0.10
+                              alpha:0.96];
+
+
+        self.settingsPanel.layer.cornerRadius =
+            18.0;
+
+
+        self.settingsPanel.layer.borderWidth =
+            1.0;
+
+
+        self.settingsPanel.layer.borderColor =
+            [self borderColor].CGColor;
+
+
+        self.settingsPanel.clipsToBounds =
+            YES;
+
+
+        [self addSubview:self.settingsPanel];
+    }
+
+
+    // --------------------------------------------------------
+    // Rebuild controls
+    // --------------------------------------------------------
+
+    for (UIView *view
+         in [self.settingsPanel.subviews copy]) {
+
+        [view removeFromSuperview];
+    }
+
+
+    // --------------------------------------------------------
+    // Title
+    // --------------------------------------------------------
+
+    UILabel *title =
+        [[UILabel alloc]
+            initWithFrame:
+                CGRectMake(
+                    18.0,
+                    12.0,
+                    300.0,
+                    28.0
+                )];
+
+
+    title.text =
+        @"Settings";
+
+
+    title.textColor =
+        [UIColor whiteColor];
+
+
+    title.font =
+        [UIFont systemFontOfSize:18.0
+                          weight:UIFontWeightBold];
+
+
+    [self.settingsPanel
+        addSubview:title];
+
+
+    // --------------------------------------------------------
+    // Minimize Shape
+    // --------------------------------------------------------
+
+    UILabel *shapeLabel =
+        [[UILabel alloc]
+            initWithFrame:
+                CGRectMake(
+                    18.0,
+                    58.0,
+                    240.0,
+                    24.0
+                )];
+
+
+    shapeLabel.text =
+        @"Minimize button";
+
+
+    shapeLabel.textColor =
+        [UIColor whiteColor];
+
+
+    shapeLabel.font =
+        [UIFont systemFontOfSize:13.0];
+
+
+    [self.settingsPanel
+        addSubview:shapeLabel];
+
+
+    self.minimizeShapeControl =
+        [[UISegmentedControl alloc]
+            initWithItems:
+                @[
+                    @"Squircle",
+                    @"Square",
+                    @"Circle"
+                ]];
+
+
+    self.minimizeShapeControl.frame =
+        CGRectMake(
+            18.0,
+            88.0,
+            330.0,
+            34.0
+        );
+
+
+    self.minimizeShapeControl.selectedSegmentIndex =
+        MAX(
+            0,
+            MIN(
+                self.minimizeShape,
+                2
+            )
+        );
+
+
+    [self.minimizeShapeControl
+        addTarget:self
+           action:@selector(minimizeShapeChanged:)
+ forControlEvents:UIControlEventValueChanged];
+
+
+    [self.settingsPanel
+        addSubview:self.minimizeShapeControl];
+
+
+    // --------------------------------------------------------
+    // Recording
+    // --------------------------------------------------------
+
+    UILabel *recordingLabel =
+        [[UILabel alloc]
+            initWithFrame:
+                CGRectMake(
+                    18.0,
+                    145.0,
+                    320.0,
+                    24.0
+                )];
+
+
+    recordingLabel.text =
+        @"Hide UI while screen recording";
+
+
+    recordingLabel.textColor =
+        [UIColor whiteColor];
+
+
+    recordingLabel.font =
+        [UIFont systemFontOfSize:13.0];
+
+
+    [self.settingsPanel
+        addSubview:recordingLabel];
+
+
+    self.hideRecordingSwitch =
+        [[UISwitch alloc]
+            initWithFrame:
+                CGRectMake(
+                    365.0,
+                    138.0,
+                    60.0,
+                    32.0
+                )];
+
+
+    self.hideRecordingSwitch.on =
+        [[NSUserDefaults standardUserDefaults]
+            boolForKey:@"ExecutorHideRecording"];
+
+
+    [self.hideRecordingSwitch
+        addTarget:self
+           action:@selector(recordingSettingChanged:)
+ forControlEvents:UIControlEventValueChanged];
+
+
+    [self.settingsPanel
+        addSubview:self.hideRecordingSwitch];
+
+
+    // --------------------------------------------------------
+    // Clean Exe
+    // --------------------------------------------------------
+
+    UIButton *clean =
+        [UIButton buttonWithType:UIButtonTypeSystem];
+
+
+    clean.frame =
+        CGRectMake(
+            18.0,
+            195.0,
+            180.0,
+            38.0
+        );
+
+
+    [clean
+        setTitle:@"Clean Exe"
+        forState:UIControlStateNormal];
+
+
+    clean.backgroundColor =
+        [UIColor systemRedColor];
+
+
+    [clean
+        setTitleColor:[UIColor whiteColor]
+        forState:UIControlStateNormal];
+
+
+    clean.layer.cornerRadius =
+        19.0;
+
+
+    [clean addTarget:self
+              action:@selector(cleanExecutedScripts)
+    forControlEvents:UIControlEventTouchUpInside];
+
+
+    [self.settingsPanel
+        addSubview:clean];
+
+
+    // --------------------------------------------------------
+    // Visibility
+    // --------------------------------------------------------
+
+    self.settingsPanel.hidden =
+        NO;
+
+
+    if (self.logPanel) {
+
+        self.logPanel.hidden =
+            YES;
+    }
+}
+
+
+// ============================================================
+// Settings: Shape
+// ============================================================
+
+- (void)minimizeShapeChanged:
+    (UISegmentedControl *)sender {
+
+    self.minimizeShape =
+        sender.selectedSegmentIndex;
+
+
+    [[NSUserDefaults standardUserDefaults]
+        setInteger:self.minimizeShape
+        forKey:@"ExecutorMinimizeShape"];
+
+
+    [[NSUserDefaults standardUserDefaults]
+        synchronize];
+
+
+    [self applyMinimizeShape];
+}
+
+
+// ============================================================
+// Settings: Recording
+// ============================================================
+
+- (void)recordingSettingChanged:
+    (UISwitch *)sender {
+
+    [[NSUserDefaults standardUserDefaults]
+        setBool:sender.isOn
+        forKey:@"ExecutorHideRecording"];
+
+
+    [[NSUserDefaults standardUserDefaults]
+        synchronize];
+
+
+    if (sender.isOn) {
+
+        self.hidden =
+            UIScreen.mainScreen.isCaptured;
+
+    } else {
+
+        self.hidden = NO;
+    }
+}
+
+
+// ============================================================
+// Clean Executed Scripts
+// ============================================================
+
+- (void)cleanExecutedScripts {
+
+    [self.executedScripts
+        removeAllObjects];
+
+
+    self.activeScript = nil;
+
+
+    [self loadActiveScriptToEditor];
+
+
+    [self appendLog:
+        @"[Executor] Clean Exe: execution state cleared.\n"];
+}
+
+
+// ============================================================
+// Append Log
+// ============================================================
+
+- (void)appendLog:(NSString *)message {
+
+    dispatch_async(
+        dispatch_get_main_queue(),
+        ^{
+
+            if (!self.logTextView) {
+                return;
+            }
+
+
+            NSString *line =
+                message ?: @"";
+
+
+            self.logTextView.text =
+                [self.logTextView.text
+                    stringByAppendingString:line];
+
+
+            if (self.logTextView.text.length) {
+
+                [self.logTextView
+                    scrollRangeToVisible:
+                        NSMakeRange(
+                            self.logTextView.text.length - 1,
+                            1
+                        )];
+            }
         }
+    );
+}
+
+
+// ============================================================
+// Screen Capture
+// ============================================================
+
+- (void)screenCaptureChanged:
+    (NSNotification *)note {
+
+    BOOL hide =
+        [[NSUserDefaults standardUserDefaults]
+            boolForKey:@"ExecutorHideRecording"];
+
+
+    if (!hide) {
+
+        self.hidden = NO;
+
+        return;
+    }
+
+
+    BOOL captured =
+        UIScreen.mainScreen.isCaptured;
+
+
+    self.hidden =
+        captured;
+}
+
+
+// ============================================================
+// Dealloc
+// ============================================================
+
+- (void)dealloc {
+
+    [[NSNotificationCenter defaultCenter]
+        removeObserver:self];
+}
+
+
+// ============================================================
+// Touch Passthrough While Minimized
+// ============================================================
+
+- (UIView *)hitTest:(CGPoint)point
+          withEvent:(UIEvent *)event {
+
+    if (self.mainPanelContainer.hidden) {
+
+        // ----------------------------------------------------
+        // Only K consumes touches.
+        // Everything else passes through.
+        // ----------------------------------------------------
+
+        if (self.minimizeButton &&
+            !self.minimizeButton.hidden) {
+
+            CGPoint localPoint =
+                [self.minimizeButton
+                    convertPoint:point
+                    fromView:self];
+
+
+            if ([self.minimizeButton
+                    pointInside:localPoint
+                    withEvent:event]) {
+
+                return
+                    [self.minimizeButton
+                        hitTest:localPoint
+                        withEvent:event];
+            }
+        }
+
+
         return nil;
     }
-    return [super hitTest:point withEvent:event];
+
+
+    return
+        [super hitTest:point
+             withEvent:event];
 }
 
 
@@ -2358,33 +3244,53 @@ UIView
             @"[Executor] No active script."
         );
 
+
+        [self appendLog:
+            @"[Executor] No active script.\n"];
+
+
         return;
     }
 
 
-    NSLog(@"[Executor] Compile requested for %@", self.activeScript.title);
-    [self appendLog:[NSString stringWithFormat:@"[Executor] Compile requested for %@\n", self.activeScript.title ?: @"Untitled"]];
+    NSString *title =
+        self.activeScript.title ?: @"Untitled";
+
+
+    NSLog(
+        @"[Executor] Compile requested for %@",
+        title
+    );
+
+
+    [self appendLog:
+        [NSString stringWithFormat:
+            @"[Executor] Compile requested for %@\n",
+            title]];
 
 
     NSLog(
         @"[Executor] Source:\n%@",
-        self.activeScript.code
+        self.activeScript.code ?: @""
     );
+
+
+    [self appendLog:
+        @"[Executor] Source received by compiler bridge.\n"];
 
 
     /*
      IMPORTANT:
 
-     An iOS application cannot take arbitrary Objective-C
-     source text here and compile it with Apple's clang
-     toolchain at runtime.
+     The Objective-C source entered into the UI cannot be
+     compiled by UIKit itself at runtime.
 
-     Your dylib itself can contain Objective-C code because
-     that code was compiled BEFORE the dylib was loaded.
+     The dylib is compiled externally by the GitHub Actions
+     compiler workflow.
 
-     For runtime compilation you would need a separate
-     compiler/runtime architecture rather than simply calling
-     an Objective-C function.
+     This method therefore logs the source/request instead
+     of pretending that Objective-C source can be evaluated
+     like JavaScript.
     */
 }
 
@@ -2396,8 +3302,6 @@ UIView
 - (void)executeScript {
 
     [self dismissKeyboard];
-    if (self.activeScript && ![self.executedScripts containsObject:self.activeScript]) [self.executedScripts addObject:self.activeScript];
-    [self appendLog:[NSString stringWithFormat:@"[Executor] Execute: %@\n", self.activeScript.title ?: @"Untitled"]];
 
 
     if (!self.activeScript) {
@@ -2406,12 +3310,35 @@ UIView
             @"[Executor] No active script."
         );
 
+
+        [self appendLog:
+            @"[Executor] No active script.\n"];
+
+
         return;
     }
 
 
+    if (![self.executedScripts
+            containsObject:self.activeScript]) {
+
+        [self.executedScripts
+            addObject:self.activeScript];
+    }
+
+
+    NSString *title =
+        self.activeScript.title ?: @"Untitled";
+
+
     NSString *source =
         self.activeScript.code ?: @"";
+
+
+    [self appendLog:
+        [NSString stringWithFormat:
+            @"[Executor] Execute: %@\n",
+            title]];
 
 
     if (source.length == 0) {
@@ -2420,13 +3347,18 @@ UIView
             @"[Executor] Script is empty."
         );
 
+
+        [self appendLog:
+            @"[Executor] Script is empty.\n"];
+
+
         return;
     }
 
 
     NSLog(
         @"[Executor] Execute requested: %@",
-        self.activeScript.title
+        title
     );
 
 
@@ -2436,32 +3368,33 @@ UIView
     );
 
 
+    [self appendLog:
+        [NSString stringWithFormat:
+            @"[Executor] Source length: %lu characters\n",
+            (unsigned long)source.length]];
+
+
     /*
      IMPORTANT:
 
-     Objective-C source is not interpreted by UIKit.
+     Objective-C source text is not automatically interpreted
+     by UIKit.
 
-     For example, putting:
+     For example:
 
          NSLog(@"Hello");
 
-     into this UITextView does NOT make iOS compile it
-     automatically.
+     placed inside the UITextView does NOT execute here.
 
-     The Objective-C compiler runs when this dylib is built.
+     The actual Objective-C compiler runs during the dylib
+     build on the external compiler side.
 
-     Therefore this method is intentionally a runtime
-     execution hook rather than a fake Objective-C evaluator.
+     Runtime execution of arbitrary source would require a
+     separate interpreter, JIT/compiler architecture, or
+     precompiled functions registered in this dylib.
 
-     To execute arbitrary source, the architecture needs
-     either:
-
-       1. precompiled functions registered in the dylib,
-       2. a supported scripting/interpreter layer,
-       3. or a separately built module/dylib that gets loaded.
-
-     Do not pretend that arbitrary Objective-C source can
-     simply be eval'd here.
+     Therefore this method is intentionally a runtime hook
+     and logger rather than a fake Objective-C evaluator.
     */
 }
 
@@ -2499,6 +3432,7 @@ UIView
         UINavigationController *nav =
             (UINavigationController *)controller;
 
+
         return nav.visibleViewController;
     }
 
@@ -2509,6 +3443,7 @@ UIView
 
         UITabBarController *tab =
             (UITabBarController *)controller;
+
 
         return tab.selectedViewController;
     }
@@ -2521,13 +3456,60 @@ UIView
 
 
 // ============================================================
-// Section 4 Custom Icon
-//
-// Based on the uploaded icon:
-// square outline + stylized terminal/chevron shape.
+// Exception Logger
 // ============================================================
 
-static UIImage *ExecutorSectionFourIcon(CGFloat size) {
+static void ExecutorUncaughtExceptionHandler(
+    NSException *exception
+) {
+
+    NSString *name =
+        exception.name ?: @"Exception";
+
+
+    NSString *reason =
+        exception.reason ?: @"No reason";
+
+
+    NSString *message =
+        [NSString stringWithFormat:
+            @"[Executor][Exception] %@: %@\n",
+            name,
+            reason];
+
+
+    dispatch_async(
+        dispatch_get_main_queue(),
+        ^{
+
+            ExecutorOverlayView *overlay =
+                gExecutorOverlay;
+
+
+            if (overlay) {
+
+                [overlay appendLog:message];
+            }
+
+
+            NSLog(
+                @"%@",
+                message
+            );
+        }
+    );
+}
+
+
+// ============================================================
+// Section 4 Custom Icon
+//
+// Square outline + stylized terminal/chevron shape.
+// ============================================================
+
+static UIImage *ExecutorSectionFourIcon(
+    CGFloat size
+) {
 
     UIGraphicsBeginImageContextWithOptions(
         CGSizeMake(size, size),
@@ -2556,7 +3538,10 @@ static UIImage *ExecutorSectionFourIcon(CGFloat size) {
 
     CGContextSetLineWidth(
         context,
-        MAX(2.0, size * 0.075)
+        MAX(
+            2.0,
+            size * 0.075
+        )
     );
 
 
@@ -2596,7 +3581,7 @@ static UIImage *ExecutorSectionFourIcon(CGFloat size) {
 
 
     // --------------------------------------------------------
-    // Stylized terminal / arrow mark
+    // Terminal / Arrow
     // --------------------------------------------------------
 
     UIBezierPath *path =
@@ -2648,7 +3633,7 @@ static UIImage *ExecutorSectionFourIcon(CGFloat size) {
 
 
     // --------------------------------------------------------
-    // Lower horizontal mark
+    // Lower Horizontal Mark
     // --------------------------------------------------------
 
     UIBezierPath *lower =
@@ -2702,7 +3687,7 @@ static UIWindow *FindBestWindowForOverlay(void) {
 
 
     // --------------------------------------------------------
-    // Foreground active scenes
+    // Foreground Active Scenes
     // --------------------------------------------------------
 
     for (UIScene *scene in scenes) {
@@ -2730,7 +3715,10 @@ static UIWindow *FindBestWindowForOverlay(void) {
             windowScene.windows;
 
 
-        // Key window first.
+        // ----------------------------------------------------
+        // Key Window
+        // ----------------------------------------------------
+
         for (UIWindow *window in windows) {
 
             if (!window ||
@@ -2748,7 +3736,10 @@ static UIWindow *FindBestWindowForOverlay(void) {
         }
 
 
-        // Then visible window with root VC.
+        // ----------------------------------------------------
+        // Visible Window With Root VC
+        // ----------------------------------------------------
+
         for (UIWindow *window in windows) {
 
             if (!window ||
@@ -2768,7 +3759,7 @@ static UIWindow *FindBestWindowForOverlay(void) {
 
 
     // --------------------------------------------------------
-    // Any connected scene fallback
+    // Any Connected Scene Fallback
     // --------------------------------------------------------
 
     for (UIScene *scene in scenes) {
@@ -2798,7 +3789,8 @@ static UIWindow *FindBestWindowForOverlay(void) {
 
             if (window.rootViewController) {
 
-                fallback = window;
+                fallback =
+                    window;
 
                 break;
             }
@@ -2812,7 +3804,7 @@ static UIWindow *FindBestWindowForOverlay(void) {
 
 
     // --------------------------------------------------------
-    // Legacy fallback
+    // Legacy Fallback
     // --------------------------------------------------------
 
     if (!fallback) {
@@ -2830,7 +3822,8 @@ static UIWindow *FindBestWindowForOverlay(void) {
 
             if (window.rootViewController) {
 
-                fallback = window;
+                fallback =
+                    window;
 
                 break;
             }
@@ -2847,7 +3840,9 @@ static UIWindow *FindBestWindowForOverlay(void) {
 // ============================================================
 
 static ExecutorOverlayView *
-FindExistingOverlay(UIWindow *window) {
+FindExistingOverlay(
+    UIWindow *window
+) {
 
     if (!window) {
         return nil;
@@ -2875,7 +3870,9 @@ FindExistingOverlay(UIWindow *window) {
 // Attach Overlay
 // ============================================================
 
-static void AttachOverlayAttempt(NSUInteger attempt) {
+static void AttachOverlayAttempt(
+    NSUInteger attempt
+) {
 
     dispatch_async(
         dispatch_get_main_queue(),
@@ -2887,8 +3884,8 @@ static void AttachOverlayAttempt(NSUInteger attempt) {
 
             if (!window) {
 
-                // Host app may not have created
-                // its UIWindow yet.
+                // Host application may not have
+                // created its UIWindow yet.
 
                 if (attempt < 20) {
 
@@ -2900,6 +3897,7 @@ static void AttachOverlayAttempt(NSUInteger attempt) {
                         ),
                         dispatch_get_main_queue(),
                         ^{
+
                             AttachOverlayAttempt(
                                 attempt + 1
                             );
@@ -2913,23 +3911,22 @@ static void AttachOverlayAttempt(NSUInteger attempt) {
 
 
             // ------------------------------------------------
-            // Do not attach twice.
+            // Prevent duplicate overlay
             // ------------------------------------------------
 
             if (FindExistingOverlay(window)) {
+
                 return;
             }
 
 
             // ------------------------------------------------
-            // Create overlay.
+            // Create Overlay
             // ------------------------------------------------
 
             ExecutorOverlayView *overlay =
                 [[ExecutorOverlayView alloc]
                     initWithFrame:window.bounds];
-            gExecutorOverlay = overlay;
-            NSSetUncaughtExceptionHandler(ExecutorUncaughtExceptionHandler);
 
 
             overlay.autoresizingMask =
@@ -2937,8 +3934,30 @@ static void AttachOverlayAttempt(NSUInteger attempt) {
                 UIViewAutoresizingFlexibleHeight;
 
 
-            overlay.userInteractionEnabled = YES;
+            overlay.userInteractionEnabled =
+                YES;
 
+
+            // ------------------------------------------------
+            // Store globally for exception logging
+            // ------------------------------------------------
+
+            gExecutorOverlay =
+                overlay;
+
+
+            // ------------------------------------------------
+            // Install exception logger
+            // ------------------------------------------------
+
+            NSSetUncaughtExceptionHandler(
+                &ExecutorUncaughtExceptionHandler
+            );
+
+
+            // ------------------------------------------------
+            // Attach
+            // ------------------------------------------------
 
             [window addSubview:overlay];
 
@@ -2969,16 +3988,6 @@ static void attachOverlayToWindow(void) {
     );
 }
 
-
-static __weak ExecutorOverlayView *gExecutorOverlay = nil;
-
-static void ExecutorUncaughtExceptionHandler(NSException *exception) {
-    NSString *message = [NSString stringWithFormat:@"[Executor][Exception] %@: %@\n", exception.name ?: @"Exception", exception.reason ?: @"No reason"];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [gExecutorOverlay appendLog:message];
-        NSLog(@"%@", message);
-    });
-}
 
 // ============================================================
 // Dylib Constructor
