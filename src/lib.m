@@ -1,6 +1,5 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
-#import <CommonCrypto/CommonDigest.h>   // for stable code hash
 
 #pragma mark - Forward declarations
 
@@ -33,15 +32,12 @@ static __weak ExecutorOverlayView *gExecutorOverlay = nil;
 #pragma mark - Native Execution Registry + Loader
 
 /*
- LOADER DESIGN (what you asked for)
+ LOADER
 
- - The textbox holds arbitrary Objective-C source (or any text).
- - Every character is kept exactly as typed.
- - When Play is pressed we take that exact string (or its SHA-256)
-   and look it up in the registry that was compiled into THIS dylib.
- - If a matching native block exists → it is executed.
- - No JIT. No runtime compilation. Just a faithful dispatcher
-   from textbox content → pre-compiled native code.
+ - Takes the exact text from the textbox (every character is preserved)
+ - Looks it up in the registry that was compiled into THIS dylib
+ - Also tries scriptId and title as fallbacks
+ - If found → runs the native block
 */
 
 typedef void (^ExecutorNativeBlock)(ExecutorOverlayView *overlay);
@@ -59,7 +55,6 @@ ExecutorNativeRegistry(void)
     return registry;
 }
 
-// Register under any key (scriptId, title, or full source text)
 static void ExecutorRegisterNativeAction(
     NSString *key,
     ExecutorNativeBlock block
@@ -71,7 +66,7 @@ static void ExecutorRegisterNativeAction(
     ExecutorNativeRegistry()[key] = [block copy];
 }
 
-// Convenience: register the same block under ID + title + exact source
+// Register under multiple keys at once
 static void ExecutorRegisterNativeActionFull(
     NSString *scriptId,
     NSString *title,
@@ -84,24 +79,7 @@ static void ExecutorRegisterNativeActionFull(
     if (source.length)    ExecutorRegisterNativeAction(source, block);
 }
 
-// Stable SHA-256 of the exact source text (optional but useful)
-static NSString *ExecutorCodeHash(NSString *source)
-{
-    if (source.length == 0) return @"";
-
-    const char *cStr = [source UTF8String];
-    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
-    CC_SHA256(cStr, (CC_LONG)strlen(cStr), digest);
-
-    NSMutableString *hash = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
-    for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) {
-        [hash appendFormat:@"%02x", digest[i]];
-    }
-    return hash;
-}
-
-// THE LOADER – called by Play
-// Preserves every character. Looks up by exact text first, then hash, then ID/title.
+// THE LOADER
 static BOOL ExecutorExecuteFromSource(
     NSString *source,
     NSString *scriptId,
@@ -113,20 +91,15 @@ static BOOL ExecutorExecuteFromSource(
 
     NSMutableDictionary *reg = ExecutorNativeRegistry();
 
-    // 1. Exact source text (highest priority – what you typed)
+    // 1. Exact source text (highest priority)
     ExecutorNativeBlock block = reg[source ?: @""];
 
-    // 2. Hash of the source (stable even if whitespace changes slightly)
-    if (!block && source.length) {
-        block = reg[ExecutorCodeHash(source)];
-    }
-
-    // 3. scriptId
+    // 2. scriptId
     if (!block && scriptId.length) {
         block = reg[scriptId];
     }
 
-    // 4. title
+    // 3. title
     if (!block && title.length) {
         block = reg[title];
     }
@@ -148,15 +121,11 @@ static BOOL ExecutorExecuteFromSource(
     }
 }
 
-#pragma mark - Example native implementations (compiled into the dylib)
-
-// These are real native functions living in the same dylib.
-// Register them under the exact text you will type in the editor
-// (or under a title / ID).
+#pragma mark - Example native implementations
 
 static void RegisterExampleNativeActions(void)
 {
-    // Example 1 – exact source match
+    // Exact text match example
     NSString *helloSource =
         @"// Hello from native\n"
          "NSLog(@\"Hello from the dylib!\");\n"
@@ -167,16 +136,10 @@ static void RegisterExampleNativeActions(void)
         [overlay appendLog:@"Hello from compiled native code!\n"];
     });
 
-    // Example 2 – by title
+    // By title
     ExecutorRegisterNativeAction(@"Test Script", ^(ExecutorOverlayView *overlay) {
         [overlay appendLog:@"[Native] Test Script executed successfully.\n"];
         NSLog(@"Test Script ran");
-    });
-
-    // Example 3 – by hash (useful when source is long)
-    NSString *longSource = @"// long source example\nint x = 42;\n// ...";
-    ExecutorRegisterNativeAction(ExecutorCodeHash(longSource), ^(ExecutorOverlayView *overlay) {
-        [overlay appendLog:@"[Native] Long source matched by hash and executed.\n"];
     });
 }
 
@@ -271,7 +234,6 @@ static void RegisterExampleNativeActions(void)
                    name:UISceneDidActivateNotification
                  object:nil];
 
-        // Register the example native actions that live in this dylib
         static dispatch_once_t once;
         dispatch_once(&once, ^{
             RegisterExampleNativeActions();
@@ -919,7 +881,7 @@ static void RegisterExampleNativeActions(void)
     }
 
     self.titleField.text = self.activeScript.title ?: @"";
-    self.codeTextView.text = self.activeScript.code ?: @"";   // fixed
+    self.codeTextView.text = self.activeScript.code ?: @"";
 
     [self.favoriteHeaderBtn setImage:[UIImage systemImageNamed:
         self.activeScript.isFavorite ? @"star.fill" : @"star"]
@@ -1128,13 +1090,13 @@ static void RegisterExampleNativeActions(void)
     [self appendLog:@"[Executor] Clean Exe: execution state cleared.\n"];
 }
 
-#pragma mark Execute  ← THIS IS THE LOADER
+#pragma mark Execute
 
 - (void)executeScript
 {
     [self dismissKeyboard];
 
-    // Prefer live textbox content (what the user is looking at right now)
+    // Live textbox content (preserves every character)
     NSString *liveSource = self.codeTextView.text ?: @"";
     NSString *scriptId   = self.activeScript.scriptId ?: @"";
     NSString *title      = self.activeScript.title ?: @"";
@@ -1143,7 +1105,6 @@ static void RegisterExampleNativeActions(void)
         @"[Executor] Execute requested (%lu chars)\n",
         (unsigned long)liveSource.length]];
 
-    // Call the loader
     BOOL ran = ExecutorExecuteFromSource(liveSource, scriptId, title, self);
 
     if (ran) {
@@ -1153,7 +1114,7 @@ static void RegisterExampleNativeActions(void)
         [self appendLog:@"[Executor] Native block from dylib executed successfully.\n"];
     } else {
         [self appendLog:@"[Executor] No matching native implementation found in this dylib.\n"];
-        [self appendLog:@"[Executor] Tip: register the exact source text (or its hash / title / ID) with ExecutorRegisterNativeAction in the compiled dylib.\n"];
+        [self appendLog:@"[Executor] Register the exact source text (or title / ID) with ExecutorRegisterNativeAction.\n"];
     }
 }
 
@@ -1179,7 +1140,6 @@ static void RegisterExampleNativeActions(void)
         self.activeScript.title ?: @"Untitled",
         (unsigned long)source.length]];
 
-    // Still external – just logs the request
     NSLog(@"[Executor] Compile requested:\n%@", source);
 }
 
