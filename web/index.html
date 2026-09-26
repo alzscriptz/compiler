@@ -295,38 +295,65 @@ void example_function(void) {
           throw new Error(`Build failed (${conclusion}). Check logs: https://github.com/${OWNER}/${REPO}/actions/runs/${runId}`);
         }
 
-        // 4. Get artifacts
-        statusText.textContent = 'Build succeeded! Fetching artifact...';
-        log('Fetching artifacts...');
-        await sleep(2000); // small delay for artifact registration
+        // 4. Fetch the dylib from the GitHub Release created by the workflow.
+        // We intentionally do not use Actions artifacts: the repository's
+        // Actions artifact quota can block uploads even when compilation succeeds.
+        statusText.textContent = 'Build succeeded! Fetching dylib...';
+        log('Fetching release asset...');
 
-        const artRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}/artifacts`, {
-          headers: {
-            'Accept': 'application/vnd.github+json',
-            'Authorization': `Bearer ${pat}`,
-            'X-GitHub-Api-Version': '2022-11-28'
+        const releaseTag = `build-${runId}`;
+        let release = null;
+        for (let i = 0; i < 12; i++) {
+          const releaseRes = await fetch(
+            `https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/${encodeURIComponent(releaseTag)}`,
+            {
+              headers: {
+                'Accept': 'application/vnd.github+json',
+                'Authorization': `Bearer ${pat}`,
+                'X-GitHub-Api-Version': '2022-11-28'
+              }
+            }
+          );
+
+          if (releaseRes.ok) {
+            release = await releaseRes.json();
+            break;
           }
-        });
-        const artData = await artRes.json();
-        const artifact = artData.artifacts?.[0];
 
-        if (!artifact) {
-          throw new Error(`No artifact found. Open the run and check the logs: https://github.com/${OWNER}/${REPO}/actions/runs/${runId}`);
+          if (releaseRes.status !== 404) {
+            const errText = await releaseRes.text();
+            throw new Error(`Could not fetch build release (${releaseRes.status}): ${errText}`);
+          }
+
+          log('Release is still being published...');
+          await sleep(2000);
         }
 
-        log(`Artifact: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
+        if (!release) {
+          throw new Error(`Build succeeded, but release ${releaseTag} was not found.`);
+        }
 
-        const downloadUrl = `https://api.github.com/repos/${OWNER}/${REPO}/actions/artifacts/${artifact.id}/zip`;
+        const asset = (release.assets || []).find(a =>
+          a.name === `${filename}.dylib`
+        ) || release.assets?.[0];
+
+        if (!asset) {
+          throw new Error(`Build release exists, but no dylib asset was found. Open: https://github.com/${OWNER}/${REPO}/releases/tag/${encodeURIComponent(releaseTag)}`);
+        }
+
+        log(`Dylib: ${asset.name} (${asset.size} bytes)`);
 
         status.className = 'status show success';
         statusText.textContent = 'Done! Your dylib is ready.';
         downloadArea.innerHTML = `
-          <p style="margin-top:12px">Download (may require being logged into GitHub in this browser):</p>
-          <a class="download-btn" href="${downloadUrl}" target="_blank">Download ${artifact.name}.zip</a>
+          <p style="margin-top:12px">Download the compiled dylib:</p>
+          <a class="download-btn" href="${asset.browser_download_url}" target="_blank" rel="noopener">Download ${asset.name}</a>
           <p style="margin-top:10px;font-size:13px;color:#888">
-            Or open the <a href="https://github.com/${OWNER}/${REPO}/actions/runs/${runId}" target="_blank" style="color:#007aff">Actions run</a> and download the artifact from there.
+            Release:
+            <a href="${release.html_url}" target="_blank" rel="noopener" style="color:#007aff">build #${runId}</a>
           </p>
         `;
+
 
       } catch (err) {
         status.className = 'status show error';
