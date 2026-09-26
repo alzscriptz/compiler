@@ -1,5 +1,8 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 #pragma mark - Forward declarations
 
@@ -2331,23 +2334,26 @@ typedef NS_ENUM(NSInteger, OCITokenType) {
             script.title.length ? script.title : @"Untitled",
             (unsigned long)source.length]];
 
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    /*
+     UIKit objects are manipulated by the evaluator itself, so keep the
+     execution on the main thread. Parsing is lightweight for these scripts
+     and this avoids cross-thread UIKit/runtime mutations.
+     */
+    dispatch_async(dispatch_get_main_queue(), ^{
         OCIInterpreter *interpreter = [OCIInterpreter new];
-        __block NSString *error = nil;
+        NSString *error = nil;
         BOOL ok = [interpreter executeSource:source
                                      overlay:self
                                        error:&error];
 
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (ok) {
-                [self appendLog:@"[Executor] ✓ Script finished in the embedded Objective-C interpreter.\n"];
-            } else {
-                [self appendLog:
-                    [NSString stringWithFormat:
-                        @"[Executor] ✗ Interpreter error: %@\n",
-                        error ?: @"Unknown interpreter error"]];
-            }
-        });
+        if (ok) {
+            [self appendLog:@"[Executor] ✓ Script finished in the embedded Objective-C interpreter.\n"];
+        } else {
+            [self appendLog:
+                [NSString stringWithFormat:
+                    @"[Executor] ✗ Interpreter error: %@\n",
+                    error ?: @"Unknown interpreter error"]];
+        }
     });
 }
 
@@ -4154,16 +4160,19 @@ static void initializeHook(void)
             return !self.lastError.length;
         }
 
-        if (self.cursor + 2 < self.tokens.count &&
+        if (self.cursor + 3 < self.tokens.count &&
             [self.tokens[self.cursor + 1].text isEqualToString:@"."] &&
-            [self.tokens[self.cursor + 2].type == OCITokenIdentifier]) {
+            self.tokens[self.cursor + 2].type == OCITokenIdentifier &&
+            [self.tokens[self.cursor + 3].text isEqualToString:@"="]) {
 
             OCIValue *base = [self literalOrIdentifier];
+            [self take]; // '.'
             NSString *property = [self take].text;
-            property = [self take].text;
+            [self take]; // '='
 
-            if ([self consume:@"="]) {
-                OCIValue *rhs = [self parseExpression];
+            OCIValue *rhs = [self parseExpression];
+
+            if (property.length > 0) {
                 NSString *setterName =
                     [NSString stringWithFormat:@"set%@%@:",
                         [[property substringToIndex:1] uppercaseString],
@@ -4173,12 +4182,10 @@ static void initializeHook(void)
                             receiver:[self unwrap:base]
                                 args:@[rhs]
                                label:setterName];
-                [self consume:@";"];
-                return !self.lastError.length;
             }
 
-            [self fail:@"Expected '=' after property access."];
-            return NO;
+            [self consume:@";"];
+            return !self.lastError.length;
         }
     }
 
