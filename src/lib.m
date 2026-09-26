@@ -1,9 +1,5 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
-#import <objc/runtime.h>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
 
 #pragma mark - Forward declarations
 
@@ -37,6 +33,24 @@ static __weak ExecutorOverlayView *gExecutorOverlay = nil;
 
 #pragma mark - Native Execution Registry
 
+/*
+ The important distinction:
+
+ The editor stores Objective-C source.
+
+ That source is compiled by your external GitHub Actions
+ compiler into the dylib.
+
+ Once the dylib is loaded, Execute can call native functions
+ that were compiled into this dylib.
+
+ Arbitrary Objective-C text cannot safely be turned into native
+ machine code by UIKit at runtime.
+
+ Register native executable blocks here when you want a script
+ to have a real runtime implementation.
+*/
+
 typedef void (^ExecutorNativeBlock)(ExecutorOverlayView *overlay);
 
 static NSMutableDictionary<NSString *, ExecutorNativeBlock> *
@@ -63,282 +77,6 @@ static void ExecutorRegisterNativeAction(
 
     ExecutorNativeRegistry()[scriptId] = [block copy];
 }
-
-
-#pragma mark - Embedded Objective-C Interpreter
-
-typedef NS_ENUM(NSInteger, OCITokenType) {
-    OCITokenEOF = 0,
-    OCITokenIdentifier,
-    OCITokenNumber,
-    OCITokenString,
-    OCITokenAtString,
-    OCITokenSymbol
-};
-
-@interface OCIValue : NSObject
-@property(nonatomic,strong) id object;
-@property(nonatomic,assign) BOOL isVoid;
-+ (instancetype)valueWithObject:(id)object;
-+ (instancetype)voidValue;
-@end
-
-@implementation OCIValue
-+ (instancetype)valueWithObject:(id)object {
-    OCIValue *v = [OCIValue new];
-    v.object = object;
-    return v;
-}
-+ (instancetype)voidValue {
-    OCIValue *v = [OCIValue new];
-    v.isVoid = YES;
-    return v;
-}
-@end
-
-@interface OCIToken : NSObject
-@property(nonatomic,assign) OCITokenType type;
-@property(nonatomic,copy) NSString *text;
-@property(nonatomic,assign) NSUInteger position;
-+ (instancetype)token:(OCITokenType)type text:(NSString *)text position:(NSUInteger)position;
-@end
-
-@implementation OCIToken
-+ (instancetype)token:(OCITokenType)type text:(NSString *)text position:(NSUInteger)position {
-    OCIToken *t = [OCIToken new];
-    t.type = type;
-    t.text = text ?: @"";
-    t.position = position;
-    return t;
-}
-@end
-
-@interface OCILexer : NSObject
-@property(nonatomic,copy) NSString *source;
-@property(nonatomic,assign) NSUInteger index;
-@property(nonatomic,strong) NSMutableArray<OCIToken *> *tokens;
-- (NSArray<OCIToken *> *)tokenize:(NSString *)source error:(NSString **)error;
-@end
-
-@implementation OCILexer
-
-- (BOOL)isIdentifierStart:(unichar)c {
-    return [[NSCharacterSet letterCharacterSet] characterIsMember:c] || c == '_';
-}
-
-- (BOOL)isIdentifierPart:(unichar)c {
-    return [[NSCharacterSet alphanumericCharacterSet] characterIsMember:c] ||
-           c == '_';
-}
-
-- (NSArray<OCIToken *> *)tokenize:(NSString *)source error:(NSString **)error {
-    self.source = source ?: @"";
-    self.index = 0;
-    self.tokens = [NSMutableArray array];
-
-    NSUInteger length = self.source.length;
-
-    while (self.index < length) {
-        unichar c = [self.source characterAtIndex:self.index];
-
-        if ([[NSCharacterSet whitespaceAndNewlineCharacterSet] characterIsMember:c]) {
-            self.index++;
-            continue;
-        }
-
-        // C / Objective-C comments.
-        if (c == '/' && self.index + 1 < length) {
-            unichar n = [self.source characterAtIndex:self.index + 1];
-            if (n == '/') {
-                self.index += 2;
-                while (self.index < length &&
-                       [self.source characterAtIndex:self.index] != '\n') {
-                    self.index++;
-                }
-                continue;
-            }
-            if (n == '*') {
-                self.index += 2;
-                BOOL closed = NO;
-                while (self.index + 1 < length) {
-                    if ([self.source characterAtIndex:self.index] == '*' &&
-                        [self.source characterAtIndex:self.index + 1] == '/') {
-                        self.index += 2;
-                        closed = YES;
-                        break;
-                    }
-                    self.index++;
-                }
-                if (!closed) {
-                    if (error) *error = @"Unterminated block comment";
-                    return nil;
-                }
-                continue;
-            }
-        }
-
-        NSUInteger start = self.index;
-
-        // Objective-C string literal.
-        if (c == '@' && self.index + 1 < length &&
-            [self.source characterAtIndex:self.index + 1] == '"') {
-            self.index += 2;
-            NSMutableString *value = [NSMutableString string];
-
-            BOOL closed = NO;
-            while (self.index < length) {
-                unichar ch = [self.source characterAtIndex:self.index++];
-                if (ch == '"') {
-                    closed = YES;
-                    break;
-                }
-                if (ch == '\\') {
-                    if (self.index >= length) break;
-                    unichar escaped = [self.source characterAtIndex:self.index++];
-                    switch (escaped) {
-                        case 'n': [value appendString:@"\n"]; break;
-                        case 'r': [value appendString:@"\r"]; break;
-                        case 't': [value appendString:@"\t"]; break;
-                        case '\\': [value appendString:@"\\"]; break;
-                        case '"': [value appendString:@"\""]; break;
-                        default:
-                            [value appendFormat:@"%C", escaped];
-                            break;
-                    }
-                } else {
-                    [value appendFormat:@"%C", ch];
-                }
-            }
-
-            if (!closed) {
-                if (error) *error = @"Unterminated Objective-C string literal";
-                return nil;
-            }
-
-            [self.tokens addObject:[OCIToken token:OCITokenAtString
-                                               text:value
-                                           position:start]];
-            continue;
-        }
-
-        // Normal C string literal.
-        if (c == '"') {
-            self.index++;
-            NSMutableString *value = [NSMutableString string];
-            BOOL closed = NO;
-
-            while (self.index < length) {
-                unichar ch = [self.source characterAtIndex:self.index++];
-                if (ch == '"') {
-                    closed = YES;
-                    break;
-                }
-                if (ch == '\\') {
-                    if (self.index >= length) break;
-                    unichar escaped = [self.source characterAtIndex:self.index++];
-                    switch (escaped) {
-                        case 'n': [value appendString:@"\n"]; break;
-                        case 'r': [value appendString:@"\r"]; break;
-                        case 't': [value appendString:@"\t"]; break;
-                        case '\\': [value appendString:@"\\"]; break;
-                        case '"': [value appendString:@"\""]; break;
-                        default:
-                            [value appendFormat:@"%C", escaped];
-                            break;
-                    }
-                } else {
-                    [value appendFormat:@"%C", ch];
-                }
-            }
-
-            if (!closed) {
-                if (error) *error = @"Unterminated string literal";
-                return nil;
-            }
-
-            [self.tokens addObject:[OCIToken token:OCITokenString
-                                               text:value
-                                           position:start]];
-            continue;
-        }
-
-        // Number literal, including simple decimals.
-        if ((c >= '0' && c <= '9') ||
-            (c == '.' && self.index + 1 < length &&
-             [self.source characterAtIndex:self.index + 1] >= '0' &&
-             [self.source characterAtIndex:self.index + 1] <= '9')) {
-            self.index++;
-            while (self.index < length) {
-                unichar ch = [self.source characterAtIndex:self.index];
-                if ((ch >= '0' && ch <= '9') || ch == '.') {
-                    self.index++;
-                } else {
-                    break;
-                }
-            }
-
-            [self.tokens addObject:[OCIToken token:OCITokenNumber
-                                               text:[self.source substringWithRange:NSMakeRange(start, self.index - start)]
-                                           position:start]];
-            continue;
-        }
-
-        // Identifier / keyword.
-        if ([self isIdentifierStart:c]) {
-            self.index++;
-            while (self.index < length &&
-                   [self isIdentifierPart:[self.source characterAtIndex:self.index]]) {
-                self.index++;
-            }
-
-            [self.tokens addObject:[OCIToken token:OCITokenIdentifier
-                                               text:[self.source substringWithRange:NSMakeRange(start, self.index - start)]
-                                           position:start]];
-            continue;
-        }
-
-        // Longest operators first.
-        NSArray<NSString *> *operators = @[
-            @"==", @"!=", @">=", @"<=", @"&&", @"||",
-            @"++", @"--", @"+=", @"-=", @"*=", @"/=",
-            @"->", @"<<", @">>"
-        ];
-
-        BOOL matched = NO;
-        for (NSString *op in operators) {
-            if (self.index + op.length <= length &&
-                [[self.source substringWithRange:NSMakeRange(self.index, op.length)] isEqualToString:op]) {
-                self.index += op.length;
-                [self.tokens addObject:[OCIToken token:OCITokenSymbol
-                                                   text:op
-                                               position:start]];
-                matched = YES;
-                break;
-            }
-        }
-        if (matched) continue;
-
-        NSString *single = [self.source substringWithRange:NSMakeRange(self.index, 1)];
-        if ([@"[](){};:,.=+-*/%<>!&|?@" containsString:single]) {
-            self.index++;
-            [self.tokens addObject:[OCIToken token:OCITokenSymbol
-                                               text:single
-                                           position:start]];
-            continue;
-        }
-
-        if (error) {
-            *error = [NSString stringWithFormat:@"Unexpected character '%C' at position %lu",
-                      c, (unsigned long)self.index];
-        }
-        return nil;
-    }
-
-    [self.tokens addObject:[OCIToken token:OCITokenEOF text:@"" position:self.index]];
-    return [self.tokens copy];
-}
-
-@end
 
 
 #pragma mark - Executor Overlay Interface
@@ -1971,7 +1709,7 @@ typedef NS_ENUM(NSInteger, OCITokenType) {
         self.activeScript.title ?: @"";
 
     self.codeTextView.text =
-        self.activeScript.code ?: @"";
+        self.activeScript.code ?: "";
 
 
     [self.favoriteHeaderBtn
@@ -2478,51 +2216,115 @@ typedef NS_ENUM(NSInteger, OCITokenType) {
 {
     [self dismissKeyboard];
 
-    ScriptModel *script = self.activeScript;
+
+    ScriptModel *script =
+        self.activeScript;
+
 
     if (!script) {
-        [self appendLog:@"[Executor] Play failed: no active script.\n"];
+
+        [self appendLog:
+            @"[Executor] Execute failed: no active script.\n"];
+
         return;
     }
 
-    NSString *source = script.code ?: @"";
 
-    if (source.length == 0) {
-        [self appendLog:@"[Executor] Play failed: script is empty.\n"];
-        return;
-    }
+    NSString *scriptId =
+        script.scriptId ?: @"";
 
-    if (![self.executedScripts containsObject:script]) {
-        [self.executedScripts addObject:script];
-    }
 
     [self appendLog:
         [NSString stringWithFormat:
-            @"[Executor] ▶ Interpreting %@ (%lu chars)...\n",
-            script.title.length ? script.title : @"Untitled",
-            (unsigned long)source.length]];
+            @"[Executor] Execute: %@\n",
+            script.title ?: @"Untitled"]];
+
 
     /*
-     UIKit objects are manipulated by the evaluator itself, so keep the
-     execution on the main thread. Parsing is lightweight for these scripts
-     and this avoids cross-thread UIKit/runtime mutations.
-     */
-    dispatch_async(dispatch_get_main_queue(), ^{
-        OCIInterpreter *interpreter = [OCIInterpreter new];
-        NSString *error = nil;
-        BOOL ok = [interpreter executeSource:source
-                                     overlay:self
-                                       error:&error];
+     =========================================================
+     REAL NATIVE EXECUTION
+     =========================================================
 
-        if (ok) {
-            [self appendLog:@"[Executor] ✓ Script finished in the embedded Objective-C interpreter.\n"];
-        } else {
+     If this script has a native implementation registered in
+     the compiled dylib, call it.
+
+     This is real execution, not fake logging.
+     */
+
+    ExecutorNativeBlock block =
+        ExecutorNativeRegistry()[scriptId];
+
+
+    if (block) {
+
+        if (![self.executedScripts
+                containsObject:script]) {
+
+            [self.executedScripts addObject:script];
+        }
+
+
+        @try {
+
+            block(self);
+
+            [self appendLog:
+                @"[Executor] Native execution completed.\n"];
+
+        }
+        @catch (NSException *exception) {
+
+            NSString *reason =
+                exception.reason ?: @"Unknown exception";
+
+
             [self appendLog:
                 [NSString stringWithFormat:
-                    @"[Executor] ✗ Interpreter error: %@\n",
-                    error ?: @"Unknown interpreter error"]];
+                    @"[Executor] Exception: %@\n",
+                    reason]];
+
+
+            NSLog(
+                @"[Executor] Execute exception: %@",
+                exception
+            );
         }
-    });
+
+
+        return;
+    }
+
+
+    /*
+     =========================================================
+     NO NATIVE IMPLEMENTATION
+     =========================================================
+     */
+
+    [self appendLog:
+        @"[Executor] No native implementation is registered for this script.\n"];
+
+
+    [self appendLog:
+        @"[Executor] Objective-C source must be compiled into the dylib first; Execute cannot JIT-compile arbitrary Objective-C text on iOS.\n"];
+
+
+    /*
+     If the source is intended to correspond to a native
+     function, use the script's UUID when registering that
+     function in compiled code.
+
+     Example:
+
+         ExecutorRegisterNativeAction(
+             @"SCRIPT-UUID",
+             ^(ExecutorOverlayView *overlay) {
+                 NSLog(@"REAL NATIVE CODE");
+                 [overlay appendLog:
+                     @"Hello from compiled native code!\\n"];
+             }
+         );
+     */
 }
 
 
@@ -3447,787 +3249,3 @@ static void initializeHook(void)
         }
     );
 }
-
-
-#pragma mark - Interpreter Environment
-
-@interface OCIEnvironment : NSObject
-@property(nonatomic,weak) OCIEnvironment *parent;
-@property(nonatomic,strong) NSMutableDictionary<NSString *, OCIValue *> *values;
-- (instancetype)initWithParent:(OCIEnvironment *)parent;
-- (void)setValue:(OCIValue *)value forName:(NSString *)name;
-- (OCIValue *)valueForName:(NSString *)name;
-@end
-
-@implementation OCIEnvironment
-- (instancetype)initWithParent:(OCIEnvironment *)parent {
-    self = [super init];
-    if (self) {
-        _parent = parent;
-        _values = [NSMutableDictionary dictionary];
-    }
-    return self;
-}
-- (void)setValue:(OCIValue *)value forName:(NSString *)name {
-    if (!name.length) return;
-    OCIEnvironment *e = self;
-    while (e) {
-        if (e.values[name]) {
-            e.values[name] = value ?: [OCIValue valueWithObject:nil];
-            return;
-        }
-        e = e.parent;
-    }
-    self.values[name] = value ?: [OCIValue valueWithObject:nil];
-}
-- (OCIValue *)valueForName:(NSString *)name {
-    for (OCIEnvironment *e = self; e; e = e.parent) {
-        OCIValue *v = e.values[name];
-        if (v) return v;
-    }
-    return nil;
-}
-@end
-
-
-#pragma mark - Interpreter
-
-@interface OCIInterpreter : NSObject
-@property(nonatomic,strong) NSArray<OCIToken *> *tokens;
-@property(nonatomic,assign) NSUInteger cursor;
-@property(nonatomic,strong) OCIEnvironment *environment;
-@property(nonatomic,weak) ExecutorOverlayView *overlay;
-@property(nonatomic,strong) NSString *lastError;
-@property(nonatomic,assign) BOOL didReturn;
-@property(nonatomic,assign) BOOL didBreak;
-- (BOOL)executeSource:(NSString *)source overlay:(ExecutorOverlayView *)overlay error:(NSString **)error;
-@end
-
-@implementation OCIInterpreter
-
-- (OCIToken *)peek {
-    return self.cursor < self.tokens.count ? self.tokens[self.cursor] : self.tokens.lastObject;
-}
-
-- (BOOL)is:(NSString *)text {
-    return [[self peek].text isEqualToString:text];
-}
-
-- (OCIToken *)take {
-    OCIToken *t = [self peek];
-    if (self.cursor < self.tokens.count) self.cursor++;
-    return t;
-}
-
-- (BOOL)consume:(NSString *)text {
-    if ([self is:text]) {
-        self.cursor++;
-        return YES;
-    }
-    return NO;
-}
-
-- (BOOL)expect:(NSString *)text {
-    if ([self consume:text]) return YES;
-    self.lastError = [NSString stringWithFormat:
-        @"Expected '%@' near source position %lu, found '%@'.",
-        text, (unsigned long)[self peek].position, [self peek].text];
-    return NO;
-}
-
-- (void)fail:(NSString *)message {
-    if (!self.lastError.length) self.lastError = message;
-}
-
-- (BOOL)isTypeWord:(NSString *)word {
-    static NSSet *types;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        types = [NSSet setWithObjects:
-            @"id", @"void", @"BOOL", @"bool", @"char", @"short", @"int",
-            @"long", @"long long", @"float", @"double", @"CGFloat",
-            @"NSInteger", @"NSUInteger", @"NSString", @"NSMutableString",
-            @"NSArray", @"NSMutableArray", @"NSDictionary",
-            @"NSMutableDictionary", @"NSNumber", @"NSObject",
-            @"UIView", @"UILabel", @"UIButton", @"UIImageView",
-            @"UITextField", @"UITextView", @"UIScrollView",
-            @"UIViewController", @"UIColor", @"UIFont", @"UIImage",
-            @"UIWindow", @"UIApplication", @"CALayer", @"CGRect",
-            @"CGPoint", @"CGSize", @"UIEdgeInsets", @"NSRange", nil];
-    });
-    return [types containsObject:word];
-}
-
-- (BOOL)truthy:(OCIValue *)v {
-    id x = v.object;
-    if (!x || x == [NSNull null]) return NO;
-    if ([x isKindOfClass:[NSNumber class]]) return [x boolValue];
-    return YES;
-}
-
-- (id)unwrap:(OCIValue *)v {
-    return v.object == [NSNull null] ? nil : v.object;
-}
-
-- (OCIValue *)literalOrIdentifier {
-    OCIToken *t = [self take];
-
-    if (t.type == OCITokenAtString) return [OCIValue valueWithObject:t.text];
-    if (t.type == OCITokenString) return [OCIValue valueWithObject:t.text];
-
-    if (t.type == OCITokenNumber) {
-        return [OCIValue valueWithObject:
-            [t.text containsString:@"."] ? @([t.text doubleValue]) : @([t.text longLongValue])];
-    }
-
-    if (t.type == OCITokenIdentifier) {
-        if ([t.text isEqualToString:@"nil"]) return [OCIValue valueWithObject:nil];
-        if ([t.text isEqualToString:@"YES"]) return [OCIValue valueWithObject:@YES];
-        if ([t.text isEqualToString:@"NO"]) return [OCIValue valueWithObject:@NO];
-
-        OCIValue *existing = [self.environment valueForName:t.text];
-        if (existing) return existing;
-
-        Class cls = NSClassFromString(t.text);
-        if (cls) return [OCIValue valueWithObject:cls];
-
-        SEL sel = NSSelectorFromString(t.text);
-        if (sel) return [OCIValue valueWithObject:
-            [NSValue valueWithPointer:sel_getUid(sel)]];
-    }
-
-    [self fail:[NSString stringWithFormat:
-        @"Unknown identifier '%@'.", t.text]];
-    return [OCIValue valueWithObject:nil];
-}
-
-- (OCIValue *)callCFunction:(NSString *)name args:(NSArray<OCIValue *> *)args {
-    NSMutableArray *objects = [NSMutableArray array];
-    for (OCIValue *v in args) [objects addObject:[self unwrap:v] ?: [NSNull null]];
-
-    if ([name isEqualToString:@"CGRectMake"] && args.count == 4)
-        return [OCIValue valueWithObject:[NSValue valueWithCGRect:
-            CGRectMake([objects[0] doubleValue], [objects[1] doubleValue],
-                       [objects[2] doubleValue], [objects[3] doubleValue])]];
-
-    if ([name isEqualToString:@"CGPointMake"] && args.count == 2)
-        return [OCIValue valueWithObject:[NSValue valueWithCGPoint:
-            CGPointMake([objects[0] doubleValue], [objects[1] doubleValue])]];
-
-    if ([name isEqualToString:@"CGSizeMake"] && args.count == 2)
-        return [OCIValue valueWithObject:[NSValue valueWithCGSize:
-            CGSizeMake([objects[0] doubleValue], [objects[1] doubleValue])]];
-
-    if ([name isEqualToString:@"UIEdgeInsetsMake"] && args.count == 4)
-        return [OCIValue valueWithObject:[NSValue valueWithUIEdgeInsets:
-            UIEdgeInsetsMake([objects[0] doubleValue], [objects[1] doubleValue],
-                             [objects[2] doubleValue], [objects[3] doubleValue])]];
-
-    if ([name isEqualToString:@"NSMakeRange"] && args.count == 2)
-        return [OCIValue valueWithObject:[NSValue valueWithRange:
-            NSMakeRange([objects[0] unsignedIntegerValue],
-                        [objects[1] unsignedIntegerValue])]];
-
-    if ([name isEqualToString:@"UIColor"] && args.count == 0)
-        return [OCIValue valueWithObject:UIColor.class];
-
-    [self fail:[NSString stringWithFormat:@"Unknown C/helper function '%@'.", name]];
-    return [OCIValue valueWithObject:nil];
-}
-
-- (BOOL)extractArgument:(id)obj
-              signature:(NSMethodSignature *)sig
-                 index:(NSUInteger)i
-               argument:(void *)buffer
-                 size:(NSUInteger)size {
-    const char *t = [sig getArgumentTypeAtIndex:i];
-    while (*t == 'r' || *t == 'n' || *t == 'N' || *t == 'o' || *t == 'O' || *t == 'R') t++;
-
-    if (*t == '@' || *t == '#') {
-        id value = obj == [NSNull null] ? nil : obj;
-        memcpy(buffer, &value, sizeof(id));
-        return YES;
-    }
-
-    if (*t == 'B' || *t == 'c') {
-        BOOL x = [obj boolValue];
-        memcpy(buffer, &x, MIN(size, sizeof(BOOL)));
-        return YES;
-    }
-
-    if (*t == 'i') {
-        int x = [obj intValue];
-        memcpy(buffer, &x, MIN(size, sizeof(x)));
-        return YES;
-    }
-
-    if (*t == 'q') {
-        long long x = [obj longLongValue];
-        memcpy(buffer, &x, MIN(size, sizeof(x)));
-        return YES;
-    }
-
-    if (*t == 'I') {
-        unsigned int x = [obj unsignedIntValue];
-        memcpy(buffer, &x, MIN(size, sizeof(x)));
-        return YES;
-    }
-
-    if (*t == 'Q') {
-        unsigned long long x = [obj unsignedLongLongValue];
-        memcpy(buffer, &x, MIN(size, sizeof(x)));
-        return YES;
-    }
-
-    if (*t == 'f') {
-        float x = [obj floatValue];
-        memcpy(buffer, &x, MIN(size, sizeof(x)));
-        return YES;
-    }
-
-    if (*t == 'd') {
-        double x = [obj doubleValue];
-        memcpy(buffer, &x, MIN(size, sizeof(x)));
-        return YES;
-    }
-
-    if (*t == '{') {
-        if (obj && [obj isKindOfClass:[NSValue class]]) {
-            NSUInteger s = 0;
-            NSGetSizeAndAlignment(t, &s, NULL);
-            if (s <= size) {
-                [obj getValue:buffer];
-                return YES;
-            }
-        }
-    }
-
-    return NO;
-}
-
-- (OCIValue *)invokeSelector:(SEL)selector
-                    receiver:(id)receiver
-                        args:(NSArray<OCIValue *> *)args
-                        label:(NSString *)label {
-    if (!receiver || receiver == [NSNull null]) {
-        [self fail:[NSString stringWithFormat:
-            @"Cannot send '%@' to nil.", label ?: NSStringFromSelector(selector)]];
-        return [OCIValue valueWithObject:nil];
-    }
-
-    NSMethodSignature *sig = [receiver methodSignatureForSelector:selector];
-    if (!sig && object_isClass(receiver)) {
-        sig = [(Class)receiver methodSignatureForSelector:selector];
-    }
-
-    if (!sig) {
-        [self fail:[NSString stringWithFormat:
-            @"%@ does not respond to '%@'.",
-            NSStringFromClass(object_getClass(receiver)),
-            label ?: NSStringFromSelector(selector)]];
-        return [OCIValue valueWithObject:nil];
-    }
-
-    NSUInteger expected = sig.numberOfArguments >= 2 ? sig.numberOfArguments - 2 : 0;
-    if (expected != args.count) {
-        [self fail:[NSString stringWithFormat:
-            @"'%@' expects %lu argument(s), got %lu.",
-            label ?: NSStringFromSelector(selector),
-            (unsigned long)expected, (unsigned long)args.count]];
-        return [OCIValue valueWithObject:nil];
-    }
-
-    NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
-    inv.selector = selector;
-
-    for (NSUInteger i = 0; i < args.count; i++) {
-        id obj = [self unwrap:args[i]] ?: [NSNull null];
-        NSUInteger len = sig.methodReturnLength;
-        const char *type = [sig getArgumentTypeAtIndex:i + 2];
-        NSUInteger argSize = 0;
-        NSGetSizeAndAlignment(type, &argSize, NULL);
-        len = MAX(len, argSize);
-        void *buffer = calloc(1, MAX((NSUInteger)32, len));
-        BOOL ok = [self extractArgument:obj signature:sig index:i + 2 argument:buffer size:MAX((NSUInteger)32, len)];
-        if (!ok) {
-            free(buffer);
-            [self fail:[NSString stringWithFormat:
-                @"Cannot marshal argument %lu for '%@'.",
-                (unsigned long)i, label ?: NSStringFromSelector(selector)]];
-            return [OCIValue valueWithObject:nil];
-        }
-        [inv setArgument:buffer atIndex:i + 2];
-        free(buffer);
-    }
-
-    @try {
-        [inv invokeWithTarget:receiver];
-    } @catch (NSException *exception) {
-        [self fail:[NSString stringWithFormat:
-            @"Exception calling '%@': %@",
-            label ?: NSStringFromSelector(selector),
-            exception.reason ?: @"unknown"]];
-        return [OCIValue valueWithObject:nil];
-    }
-
-    const char *returnType = sig.methodReturnType;
-    while (*returnType == 'r' || *returnType == 'n' || *returnType == 'N' ||
-           *returnType == 'o' || *returnType == 'O' || *returnType == 'R') returnType++;
-
-    if (*returnType == 'v') return [OCIValue voidValue];
-
-    NSUInteger length = sig.methodReturnLength;
-    void *buffer = calloc(1, MAX((NSUInteger)32, length));
-    [inv getReturnValue:buffer];
-
-    OCIValue *result = nil;
-
-    if (*returnType == '@' || *returnType == '#') {
-        id obj = nil;
-        memcpy(&obj, buffer, sizeof(id));
-        result = [OCIValue valueWithObject:obj];
-    } else if (*returnType == 'B' || *returnType == 'c') {
-        BOOL x = NO; memcpy(&x, buffer, MIN(length, sizeof(x)));
-        result = [OCIValue valueWithObject:@(x)];
-    } else if (*returnType == 'i') {
-        int x = 0; memcpy(&x, buffer, MIN(length, sizeof(x)));
-        result = [OCIValue valueWithObject:@(x)];
-    } else if (*returnType == 'q') {
-        long long x = 0; memcpy(&x, buffer, MIN(length, sizeof(x)));
-        result = [OCIValue valueWithObject:@(x)];
-    } else if (*returnType == 'I') {
-        unsigned int x = 0; memcpy(&x, buffer, MIN(length, sizeof(x)));
-        result = [OCIValue valueWithObject:@(x)];
-    } else if (*returnType == 'Q') {
-        unsigned long long x = 0; memcpy(&x, buffer, MIN(length, sizeof(x)));
-        result = [OCIValue valueWithObject:@(x)];
-    } else if (*returnType == 'f') {
-        float x = 0; memcpy(&x, buffer, MIN(length, sizeof(x)));
-        result = [OCIValue valueWithObject:@(x)];
-    } else if (*returnType == 'd') {
-        double x = 0; memcpy(&x, buffer, MIN(length, sizeof(x)));
-        result = [OCIValue valueWithObject:@(x)];
-    } else if (*returnType == '{') {
-        result = [OCIValue valueWithObject:
-            [NSValue valueWithBytes:buffer objCType:returnType]];
-    } else {
-        result = [OCIValue valueWithObject:nil];
-    }
-
-    free(buffer);
-    return result ?: [OCIValue valueWithObject:nil];
-}
-
-- (NSString *)selectorNameFromTokens:(NSMutableArray<OCIToken *> *)parts {
-    if (!parts.count) return @"";
-    NSMutableString *name = [NSMutableString string];
-    for (OCIToken *t in parts) [name appendString:t.text ?: @""];
-    return name;
-}
-
-- (OCIValue *)parseExpression {
-    return [self parseLogicalOr];
-}
-
-- (OCIValue *)parseLogicalOr {
-    OCIValue *left = [self parseLogicalAnd];
-    while ([self consume:@"||"]) {
-        OCIValue *right = [self parseLogicalAnd];
-        left = [OCIValue valueWithObject:@([self truthy:left] || [self truthy:right])];
-    }
-    return left;
-}
-
-- (OCIValue *)parseLogicalAnd {
-    OCIValue *left = [self parseEquality];
-    while ([self consume:@"&&"]) {
-        OCIValue *right = [self parseEquality];
-        left = [OCIValue valueWithObject:@([self truthy:left] && [self truthy:right])];
-    }
-    return left;
-}
-
-- (OCIValue *)parseEquality {
-    OCIValue *left = [self parseComparison];
-    while ([self is:@"=="] || [self is:@"!="]) {
-        NSString *op = [self take].text;
-        OCIValue *right = [self parseComparison];
-        id a = [self unwrap:left], *b = [self unwrap:right];
-        BOOL same = (a == b) || (a && b && [a isEqual:b]);
-        left = [OCIValue valueWithObject:@([op isEqualToString:@"=="] ? same : !same)];
-    }
-    return left;
-}
-
-- (OCIValue *)parseComparison {
-    OCIValue *left = [self parseTerm];
-    while ([self is:@"<"] || [self is:@">"] || [self is:@"<="] || [self is:@">="]) {
-        NSString *op = [self take].text;
-        OCIValue *right = [self parseTerm];
-        double a = [[self unwrap:left] respondsToSelector:@selector(doubleValue)] ? [[self unwrap:left] doubleValue] : 0;
-        double b = [[self unwrap:right] respondsToSelector:@selector(doubleValue)] ? [[self unwrap:right] doubleValue] : 0;
-        BOOL result = [op isEqualToString:@"<"] ? a < b :
-                      [op isEqualToString:@">"] ? a > b :
-                      [op isEqualToString:@"<="] ? a <= b : a >= b;
-        left = [OCIValue valueWithObject:@(result)];
-    }
-    return left;
-}
-
-- (OCIValue *)parseTerm {
-    OCIValue *left = [self parseFactor];
-    while ([self is:@"+"] || [self is:@"-"]) {
-        NSString *op = [self take].text;
-        OCIValue *right = [self parseFactor];
-        id a = [self unwrap:left], b = [self unwrap:right];
-
-        if ([op isEqualToString:@"+"] && ([a isKindOfClass:[NSString class]] || [b isKindOfClass:[NSString class]])) {
-            left = [OCIValue valueWithObject:
-                [NSString stringWithFormat:@"%@%@",
-                    a ?: @"", b ?: @""]];
-        } else {
-            double x = [a respondsToSelector:@selector(doubleValue)] ? [a doubleValue] : 0;
-            double y = [b respondsToSelector:@selector(doubleValue)] ? [b doubleValue] : 0;
-            left = [OCIValue valueWithObject:
-                @([op isEqualToString:@"+"] ? x + y : x - y)];
-        }
-    }
-    return left;
-}
-
-- (OCIValue *)parseFactor {
-    OCIValue *left = [self parseUnary];
-    while ([self is:@"*"] || [self is:@"/"] || [self is:@"%"]) {
-        NSString *op = [self take].text;
-        OCIValue *right = [self parseUnary];
-        double x = [[self unwrap:left] respondsToSelector:@selector(doubleValue)] ? [[self unwrap:left] doubleValue] : 0;
-        double y = [[self unwrap:right] respondsToSelector:@selector(doubleValue)] ? [[self unwrap:right] doubleValue] : 0;
-        double z = [op isEqualToString:@"*"] ? x * y :
-                   [op isEqualToString:@"/"] ? (y == 0 ? 0 : x / y) : fmod(x, y);
-        left = [OCIValue valueWithObject:@(z)];
-    }
-    return left;
-}
-
-- (OCIValue *)parseUnary {
-    if ([self consume:@"!"]) {
-        return [OCIValue valueWithObject:@(![self truthy:[self parseUnary]])];
-    }
-    if ([self consume:@"-"]) {
-        id x = [self unwrap:[self parseUnary]];
-        return [OCIValue valueWithObject:@(-([x respondsToSelector:@selector(doubleValue)] ? [x doubleValue] : 0))];
-    }
-    return [self parsePostfix];
-}
-
-- (OCIValue *)parsePostfix {
-    OCIValue *value = [self parsePrimary];
-
-    while ([self consume:@"."]) {
-        OCIToken *name = [self take];
-        if (name.type != OCITokenIdentifier) {
-            [self fail:@"Expected property name after '.'."]; return value;
-        }
-        SEL getter = NSSelectorFromString(name.text);
-        value = [self invokeSelector:getter
-                            receiver:[self unwrap:value]
-                                args:@[]
-                               label:name.text];
-    }
-
-    return value;
-}
-
-- (OCIValue *)parseMessage {
-    [self expect:@"["];
-    OCIValue *receiver = [self parseExpression];
-
-    NSMutableArray<OCIToken *> *selectorParts = [NSMutableArray array];
-    NSMutableArray<OCIValue *> *arguments = [NSMutableArray array];
-
-    while (![self is:@"]"] && [self peek].type != OCITokenEOF) {
-        OCIToken *name = [self take];
-        if (name.type != OCITokenIdentifier) {
-            [self fail:@"Expected selector component inside message."];
-            return [OCIValue valueWithObject:nil];
-        }
-
-        [selectorParts addObject:name];
-
-        if ([self consume:@":"]) {
-            [arguments addObject:[self parseExpression]];
-        } else {
-            if (arguments.count > 0) {
-                [self fail:@"Malformed Objective-C selector."];
-                return [OCIValue valueWithObject:nil];
-            }
-            break;
-        }
-    }
-
-    if (![self expect:@"]"]) return [OCIValue valueWithObject:nil];
-
-    NSString *selectorName = [self selectorNameFromTokens:selectorParts];
-    SEL selector = NSSelectorFromString(selectorName);
-
-    return [self invokeSelector:selector
-                        receiver:[self unwrap:receiver]
-                            args:arguments
-                           label:selectorName];
-}
-
-- (OCIValue *)parsePrimary {
-    if ([self is:@"["]) return [self parseMessage];
-
-    if ([self consume:@"("]) {
-        OCIValue *v = [self parseExpression];
-        [self expect:@")"];
-        return v;
-    }
-
-    if ([self is:@"@"]) {
-        [self take];
-        OCIToken *next = [self take];
-        if ([next.text isEqualToString:@"YES"]) return [OCIValue valueWithObject:@YES];
-        if ([next.text isEqualToString:@"NO"]) return [OCIValue valueWithObject:@NO];
-        if (next.type == OCITokenString) return [OCIValue valueWithObject:next.text];
-        [self fail:@"Unsupported @ expression."];
-        return [OCIValue valueWithObject:nil];
-    }
-
-    if ([self peek].type == OCITokenIdentifier) {
-        NSString *name = [self peek].text;
-
-        if ([name isEqualToString:@"CGRectMake"] ||
-            [name isEqualToString:@"CGPointMake"] ||
-            [name isEqualToString:@"CGSizeMake"] ||
-            [name isEqualToString:@"UIEdgeInsetsMake"] ||
-            [name isEqualToString:@"NSMakeRange"]) {
-            [self take];
-            if (![self expect:@"("]) return [OCIValue valueWithObject:nil];
-
-            NSMutableArray *args = [NSMutableArray array];
-            if (![self is:@")"]) {
-                do {
-                    [args addObject:[self parseExpression]];
-                } while ([self consume:@","]);
-            }
-            [self expect:@")"];
-            return [self callCFunction:name args:args];
-        }
-
-        return [self literalOrIdentifier];
-    }
-
-    if ([self.peek].type == OCITokenAtString ||
-        [self.peek].type == OCITokenString ||
-        [self.peek].type == OCITokenNumber) {
-        return [self literalOrIdentifier];
-    }
-
-    [self fail:[NSString stringWithFormat:
-        @"Unexpected token '%@' near position %lu.",
-        [self peek].text, (unsigned long)[self peek].position]];
-    return [OCIValue valueWithObject:nil];
-}
-
-- (void)skipTypePunctuation {
-    while ([self consume:@"*"] || [self consume:@"__strong"] ||
-           [self consume:@"__weak"] || [self consume:@"const"]) {}
-}
-
-- (BOOL)looksLikeDeclaration {
-    if ([self peek].type != OCITokenIdentifier) return NO;
-    NSString *first = [self peek].text;
-
-    if ([self isTypeWord:first]) return YES;
-
-    if (self.cursor + 1 < self.tokens.count &&
-        self.tokens[self.cursor + 1].type == OCITokenIdentifier) {
-        Class cls = NSClassFromString(first);
-        return cls != Nil;
-    }
-
-    return NO;
-}
-
-- (BOOL)parseStatement {
-    if ([self is:@";"]) {
-        [self take];
-        return YES;
-    }
-
-    if ([self consume:@"{"]) {
-        while (![self is:@"}"] && [self peek].type != OCITokenEOF &&
-               !self.didReturn && !self.didBreak) {
-            if (![self parseStatement]) return NO;
-        }
-        return [self expect:@"}"];
-    }
-
-    if ([self is:@"if"]) {
-        [self take];
-        if (![self expect:@"("]) return NO;
-        OCIValue *condition = [self parseExpression];
-        if (![self expect:@")"]) return NO;
-
-        NSUInteger bodyStart = self.cursor;
-        if ([self truthy:condition]) {
-            if (![self parseStatement]) return NO;
-            if ([self is:@"else"]) {
-                [self take];
-                [self skipStatement];
-            }
-        } else {
-            [self skipStatement];
-            if ([self is:@"else"]) {
-                [self take];
-                if (![self parseStatement]) return NO;
-            }
-        }
-        (void)bodyStart;
-        return YES;
-    }
-
-    if ([self is:@"return"]) {
-        [self take];
-        if (![self is:@";"] && ![self is:@"}"]) (void)[self parseExpression];
-        [self consume:@";"];
-        self.didReturn = YES;
-        return YES;
-    }
-
-    if ([self is:@"break"]) {
-        [self take];
-        [self consume:@";"];
-        self.didBreak = YES;
-        return YES;
-    }
-
-    if ([self looksLikeDeclaration]) {
-        NSString *type = [self take].text;
-
-        if ([type isEqualToString:@"long"] && [self is:@"long"]) {
-            [self take];
-        }
-
-        [self skipTypePunctuation];
-
-        OCIToken *name = [self take];
-        if (name.type != OCITokenIdentifier) {
-            [self fail:@"Expected variable name in declaration."];
-            return NO;
-        }
-
-        OCIValue *value = [OCIValue valueWithObject:nil];
-        if ([self consume:@"="]) value = [self parseExpression];
-
-        [self.environment setValue:value forName:name.text];
-        [self consume:@";"];
-        return !self.lastError.length;
-    }
-
-    if ([self.peek].type == OCITokenIdentifier) {
-        NSString *name = [self.peek].text;
-
-        if (self.cursor + 1 < self.tokens.count &&
-            [self.tokens[self.cursor + 1].text isEqualToString:@"="]) {
-            [self take];
-            [self take];
-            OCIValue *value = [self parseExpression];
-            [self.environment setValue:value forName:name];
-            [self consume:@";"];
-            return !self.lastError.length;
-        }
-
-        if (self.cursor + 3 < self.tokens.count &&
-            [self.tokens[self.cursor + 1].text isEqualToString:@"."] &&
-            self.tokens[self.cursor + 2].type == OCITokenIdentifier &&
-            [self.tokens[self.cursor + 3].text isEqualToString:@"="]) {
-
-            OCIValue *base = [self literalOrIdentifier];
-            [self take]; // '.'
-            NSString *property = [self take].text;
-            [self take]; // '='
-
-            OCIValue *rhs = [self parseExpression];
-
-            if (property.length > 0) {
-                NSString *setterName =
-                    [NSString stringWithFormat:@"set%@%@:",
-                        [[property substringToIndex:1] uppercaseString],
-                        [property substringFromIndex:1]];
-
-                [self invokeSelector:NSSelectorFromString(setterName)
-                            receiver:[self unwrap:base]
-                                args:@[rhs]
-                               label:setterName];
-            }
-
-            [self consume:@";"];
-            return !self.lastError.length;
-        }
-    }
-
-    (void)[self parseExpression];
-    [self consume:@";"];
-    return !self.lastError.length;
-}
-
-- (void)skipStatement {
-    if ([self consume:@"{"]) {
-        NSInteger depth = 1;
-        while (self.cursor < self.tokens.count && depth > 0) {
-            if ([self is:@"{"]) depth++;
-            else if ([self is:@"}"]) depth--;
-            [self take];
-        }
-        return;
-    }
-
-    NSInteger bracket = 0;
-    while (self.cursor < self.tokens.count) {
-        if ([self is:@"("]) bracket++;
-        else if ([self is:@")"]) {
-            if (bracket == 0) return;
-            bracket--;
-        } else if ([self is:@";"] && bracket == 0) {
-            [self take];
-            return;
-        }
-        [self take];
-    }
-}
-
-- (BOOL)executeSource:(NSString *)source
-              overlay:(ExecutorOverlayView *)overlay
-                error:(NSString **)error {
-    self.overlay = overlay;
-    self.cursor = 0;
-    self.lastError = nil;
-    self.didReturn = NO;
-    self.didBreak = NO;
-    self.environment = [[OCIEnvironment alloc] initWithParent:nil];
-
-    OCILexer *lexer = [OCILexer new];
-    NSString *lexError = nil;
-    self.tokens = [lexer tokenize:source error:&lexError];
-
-    if (!self.tokens) {
-        if (error) *error = lexError ?: @"Lexer failed.";
-        return NO;
-    }
-
-    while ([self peek].type != OCITokenEOF && !self.didReturn) {
-        if (![self parseStatement]) break;
-    }
-
-    if (self.lastError.length) {
-        if (error) *error = self.lastError;
-        return NO;
-    }
-
-    return YES;
-}
-
-@end
