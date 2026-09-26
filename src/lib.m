@@ -387,6 +387,8 @@ typedef NS_ENUM(NSInteger, OCITokenType) {
 
 @end
 
+@class OCIInterpreter;
+
 @interface ExecutorOverlayView : UIView
 <UITextFieldDelegate, UITextViewDelegate>
 
@@ -3630,7 +3632,7 @@ static void initializeHook(void)
 
         SEL sel = NSSelectorFromString(t.text);
         if (sel) return [OCIValue valueWithObject:
-            [NSValue valueWithPointer:sel_getUid(sel)]];
+            [NSValue valueWithPointer:(void *)sel]];
     }
 
     [self fail:[NSString stringWithFormat:
@@ -3889,7 +3891,8 @@ static void initializeHook(void)
     while ([self is:@"=="] || [self is:@"!="]) {
         NSString *op = [self take].text;
         OCIValue *right = [self parseComparison];
-        id a = [self unwrap:left], *b = [self unwrap:right];
+        id a = [self unwrap:left];
+        id b = [self unwrap:right];
         BOOL same = (a == b) || (a && b && [a isEqual:b]);
         left = [OCIValue valueWithObject:@([op isEqualToString:@"=="] ? same : !same)];
     }
@@ -4056,7 +4059,7 @@ static void initializeHook(void)
         return [self literalOrIdentifier];
     }
 
-    if ([self.peek].type == OCITokenAtString ||
+    if ([self peek].type == OCITokenAtString ||
         [self.peek].type == OCITokenString ||
         [self.peek].type == OCITokenNumber) {
         return [self literalOrIdentifier];
@@ -4165,7 +4168,7 @@ static void initializeHook(void)
     }
 
     if ([self.peek].type == OCITokenIdentifier) {
-        NSString *name = [self.peek].text;
+        NSString *name = [self peek].text;
 
         if (self.cursor + 1 < self.tokens.count &&
             [self.tokens[self.cursor + 1].text isEqualToString:@"="]) {
@@ -4273,282 +4276,6 @@ static void initializeHook(void)
 #pragma mark - Executor Overlay Interface
 
 
-
-
-#pragma mark - Exception Handler
-
-static void ExecutorUncaughtExceptionHandler(
-    NSException *exception
-)
-{
-    NSString *name =
-        exception.name ?: @"Exception";
-
-    NSString *reason =
-        exception.reason ?: @"No reason";
-
-
-    NSString *message =
-        [NSString stringWithFormat:
-            @"[Executor][Exception] %@: %@\n",
-            name,
-            reason];
-
-
-    dispatch_async(
-        dispatch_get_main_queue(),
-        ^{
-
-            ExecutorOverlayView *overlay =
-                gExecutorOverlay;
-
-
-            if (overlay) {
-                [overlay appendLog:message];
-            }
-
-
-            NSLog(@"%@", message);
-        }
-    );
-}
-
-
-#pragma mark - Existing Overlay
-
-static ExecutorOverlayView *
-FindExistingOverlay(UIWindow *window)
-{
-    if (!window) {
-        return nil;
-    }
-
-
-    for (UIView *view in window.subviews) {
-
-        if ([view
-                isKindOfClass:
-                    [ExecutorOverlayView class]]) {
-
-            return (ExecutorOverlayView *)view;
-        }
-    }
-
-
-    return nil;
-}
-
-
-#pragma mark - Safe Window Discovery
-
-static UIWindow *FindBestWindowForOverlay(void)
-{
-    UIApplication *application =
-        [UIApplication sharedApplication];
-
-
-    UIWindow *fallback = nil;
-
-
-    /*
-     Prefer active scenes.
-     */
-
-    for (UIScene *scene
-         in application.connectedScenes) {
-
-        if (![scene
-                isKindOfClass:[UIWindowScene class]]) {
-
-            continue;
-        }
-
-
-        UIWindowScene *windowScene =
-            (UIWindowScene *)scene;
-
-
-        if (windowScene.activationState !=
-            UISceneActivationStateForegroundActive) {
-
-            continue;
-        }
-
-
-        for (UIWindow *window
-             in windowScene.windows) {
-
-            if (!window ||
-                window.hidden ||
-                window.alpha <= 0.01) {
-
-                continue;
-            }
-
-
-            if (window.isKeyWindow) {
-                return window;
-            }
-        }
-
-
-        for (UIWindow *window
-             in windowScene.windows) {
-
-            if (!window ||
-                window.hidden ||
-                window.alpha <= 0.01) {
-
-                continue;
-            }
-
-
-            if (window.rootViewController) {
-                return window;
-            }
-        }
-    }
-
-
-    /*
-     Fallback to any connected scene.
-     */
-
-    for (UIScene *scene
-         in application.connectedScenes) {
-
-        if (![scene
-                isKindOfClass:[UIWindowScene class]]) {
-
-            continue;
-        }
-
-
-        UIWindowScene *windowScene =
-            (UIWindowScene *)scene;
-
-
-        for (UIWindow *window
-             in windowScene.windows) {
-
-            if (!window ||
-                window.hidden ||
-                window.alpha <= 0.01) {
-
-                continue;
-            }
-
-
-            if (window.rootViewController) {
-
-                fallback = window;
-                break;
-            }
-        }
-
-
-        if (fallback) {
-            break;
-        }
-    }
-
-
-    return fallback;
-}
-
-
-#pragma mark - Attach
-
-static void AttachOverlayAttempt(NSUInteger attempt)
-{
-    dispatch_async(
-        dispatch_get_main_queue(),
-        ^{
-
-            UIWindow *window =
-                FindBestWindowForOverlay();
-
-
-            if (!window) {
-
-                if (attempt < 30) {
-
-                    dispatch_after(
-                        dispatch_time(
-                            DISPATCH_TIME_NOW,
-                            (int64_t)
-                            (0.25 * NSEC_PER_SEC)
-                        ),
-                        dispatch_get_main_queue(),
-                        ^{
-
-                            AttachOverlayAttempt(
-                                attempt + 1
-                            );
-                        }
-                    );
-                }
-
-                return;
-            }
-
-
-            ExecutorOverlayView *existing =
-                FindExistingOverlay(window);
-
-
-            if (existing) {
-
-                gExecutorOverlay =
-                    existing;
-
-                return;
-            }
-
-
-            ExecutorOverlayView *overlay =
-                [[ExecutorOverlayView alloc]
-                    initWithFrame:window.bounds];
-
-
-            overlay.autoresizingMask =
-                UIViewAutoresizingFlexibleWidth |
-                UIViewAutoresizingFlexibleHeight;
-
-
-            gExecutorOverlay =
-                overlay;
-
-
-            NSSetUncaughtExceptionHandler(
-                &ExecutorUncaughtExceptionHandler
-            );
-
-
-            [window addSubview:overlay];
-
-
-            NSLog(
-                @"[Executor] Overlay attached."
-            );
-        }
-    );
-}
-
-
-static void attachOverlayToWindow(void)
-{
-    static dispatch_once_t onceToken;
-
-
-    dispatch_once(
-        &onceToken,
-        ^{
-
-            AttachOverlayAttempt(0);
-        }
-    );
-}
 
 
 #pragma mark - Constructor
