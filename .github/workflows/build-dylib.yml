@@ -90,7 +90,22 @@ jobs:
           set -euo pipefail
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
           CLANG=$(xcrun --sdk iphoneos -f clang)
-          echo "Running syntax/type validation first..." 
+          echo "Running syntax/type validation first..."
+          FRAMEWORK_ARGS=(-framework Foundation -framework UIKit -framework QuartzCore)
+          while IFS= read -r framework; do
+            [ -n "$framework" ] || continue
+            case "$framework" in Foundation|UIKit|QuartzCore|Darwin|objc|os) continue;; esac
+            if [ -d "$SDK/System/Library/Frameworks/$framework.framework" ] || [ -d "$SDK/System/Library/PrivateFrameworks/$framework.framework" ]; then
+              already=0
+              for existing in "${FRAMEWORK_ARGS[@]}"; do [ "$existing" = "$framework" ] && already=1; done
+              [ "$already" -eq 0 ] && FRAMEWORK_ARGS+=(-framework "$framework")
+            fi
+          done < <(
+            {
+              sed -nE 's/^[[:space:]]*#import[[:space:]]*[<"]([A-Za-z0-9_]+)(\/.*)?[>"].*$/\1/p' src/lib.m
+              sed -nE 's/^[[:space:]]*@import[[:space:]]+([A-Za-z0-9_]+)[[:space:]]*;.*/\1/p' src/lib.m
+            } | sort -u
+          )
           "$CLANG" \
             -arch arm64 \
             -isysroot "$SDK" \
@@ -146,9 +161,7 @@ jobs:
             -dynamiclib \
             -o "${FILENAME}.dylib" \
             src/lib.m \
-            -framework Foundation \
-            -framework UIKit \
-            -framework QuartzCore
+            "${FRAMEWORK_ARGS[@]}"
           file "${FILENAME}.dylib"
           ls -lh "${FILENAME}.dylib"
 
