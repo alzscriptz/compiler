@@ -175,7 +175,8 @@ typedef NS_ENUM(NSInteger, OCITokenType) {
 
 - (BOOL)isIdentifierPart:(unichar)c {
     return [[NSCharacterSet alphanumericCharacterSet] characterIsMember:c] ||
-           c == '_' || c == '\n'
+           c == '_' || c == '\n';
+}
 
 @interface ExecutorOverlayView : UIView
 <UITextFieldDelegate, UITextViewDelegate>
