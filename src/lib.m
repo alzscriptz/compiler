@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,11 +48,12 @@ static __weak ExecutorOverlayView *gExecutorOverlay = nil;
  Once the dylib is loaded, Execute can call native functions
  that were compiled into this dylib.
 
- Arbitrary Objective-C text cannot safely be turned into native
- machine code by UIKit at runtime.
+ Play sends that source to the embedded interpreter below.
+ The interpreter evaluates it directly against the Objective-C runtime
+ in this already-injected dylib.
 
- Register native executable blocks here when you want a script
- to have a real runtime implementation.
+ The external clang compiler remains available for building the
+ Executor dylib itself, but Play does not require a new script dylib.
 */
 
 typedef void (^ExecutorNativeBlock)(ExecutorOverlayView *overlay);
@@ -6480,25 +6482,7 @@ static void initializeHook(void)
 
 
     [self appendLog:
-        @"[Executor] Objective-C source must be compiled into the dylib first; Execute cannot JIT-compile arbitrary Objective-C text on iOS.\n"];
 
-
-    /*
-     If the source is intended to correspond to a native
-     function, use the script's UUID when registering that
-     function in compiled code.
-
-     Example:
-
-         ExecutorRegisterNativeAction(
-             @"SCRIPT-UUID",
-             ^(ExecutorOverlayView *overlay) {
-                 NSLog(@"REAL NATIVE CODE");
-                 [overlay appendLog:
-                     @"Hello from compiled native code!\\n"];
-             }
-         );
-     */
 }
 
 
