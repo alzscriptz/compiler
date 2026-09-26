@@ -178,6 +178,213 @@ typedef NS_ENUM(NSInteger, OCITokenType) {
            c == '_';
 }
 
+- (NSArray<OCIToken *> *)tokenize:(NSString *)source error:(NSString **)error {
+    self.source = source ?: @"";
+    self.index = 0;
+    self.tokens = [NSMutableArray array];
+
+    NSUInteger length = self.source.length;
+
+    while (self.index < length) {
+        unichar c = [self.source characterAtIndex:self.index];
+
+        if ([[NSCharacterSet whitespaceAndNewlineCharacterSet] characterIsMember:c]) {
+            self.index++;
+            continue;
+        }
+
+        // C / Objective-C comments.
+        if (c == '/' && self.index + 1 < length) {
+            unichar n = [self.source characterAtIndex:self.index + 1];
+            if (n == '/') {
+                self.index += 2;
+                while (self.index < length &&
+                       [self.source characterAtIndex:self.index] != '\n') {
+                    self.index++;
+                }
+                continue;
+            }
+            if (n == '*') {
+                self.index += 2;
+                BOOL closed = NO;
+                while (self.index + 1 < length) {
+                    if ([self.source characterAtIndex:self.index] == '*' &&
+                        [self.source characterAtIndex:self.index + 1] == '/') {
+                        self.index += 2;
+                        closed = YES;
+                        break;
+                    }
+                    self.index++;
+                }
+                if (!closed) {
+                    if (error) *error = @"Unterminated block comment";
+                    return nil;
+                }
+                continue;
+            }
+        }
+
+        NSUInteger start = self.index;
+
+        // Objective-C string literal.
+        if (c == '@' && self.index + 1 < length &&
+            [self.source characterAtIndex:self.index + 1] == '"') {
+            self.index += 2;
+            NSMutableString *value = [NSMutableString string];
+
+            BOOL closed = NO;
+            while (self.index < length) {
+                unichar ch = [self.source characterAtIndex:self.index++];
+                if (ch == '"') {
+                    closed = YES;
+                    break;
+                }
+                if (ch == '\\') {
+                    if (self.index >= length) break;
+                    unichar escaped = [self.source characterAtIndex:self.index++];
+                    switch (escaped) {
+                        case 'n': [value appendString:@"\n"]; break;
+                        case 'r': [value appendString:@"\r"]; break;
+                        case 't': [value appendString:@"\t"]; break;
+                        case '\\': [value appendString:@"\\"]; break;
+                        case '"': [value appendString:@"\""]; break;
+                        default:
+                            [value appendFormat:@"%C", escaped];
+                            break;
+                    }
+                } else {
+                    [value appendFormat:@"%C", ch];
+                }
+            }
+
+            if (!closed) {
+                if (error) *error = @"Unterminated Objective-C string literal";
+                return nil;
+            }
+
+            [self.tokens addObject:[OCIToken token:OCITokenAtString
+                                               text:value
+                                           position:start]];
+            continue;
+        }
+
+        // Normal C string literal.
+        if (c == '"') {
+            self.index++;
+            NSMutableString *value = [NSMutableString string];
+            BOOL closed = NO;
+
+            while (self.index < length) {
+                unichar ch = [self.source characterAtIndex:self.index++];
+                if (ch == '"') {
+                    closed = YES;
+                    break;
+                }
+                if (ch == '\\') {
+                    if (self.index >= length) break;
+                    unichar escaped = [self.source characterAtIndex:self.index++];
+                    switch (escaped) {
+                        case 'n': [value appendString:@"\n"]; break;
+                        case 'r': [value appendString:@"\r"]; break;
+                        case 't': [value appendString:@"\t"]; break;
+                        case '\\': [value appendString:@"\\"]; break;
+                        case '"': [value appendString:@"\""]; break;
+                        default:
+                            [value appendFormat:@"%C", escaped];
+                            break;
+                    }
+                } else {
+                    [value appendFormat:@"%C", ch];
+                }
+            }
+
+            if (!closed) {
+                if (error) *error = @"Unterminated string literal";
+                return nil;
+            }
+
+            [self.tokens addObject:[OCIToken token:OCITokenString
+                                               text:value
+                                           position:start]];
+            continue;
+        }
+
+        // Number literal, including simple decimals.
+        if ((c >= '0' && c <= '9') ||
+            (c == '.' && self.index + 1 < length &&
+             [self.source characterAtIndex:self.index + 1] >= '0' &&
+             [self.source characterAtIndex:self.index + 1] <= '9')) {
+            self.index++;
+            while (self.index < length) {
+                unichar ch = [self.source characterAtIndex:self.index];
+                if ((ch >= '0' && ch <= '9') || ch == '.') {
+                    self.index++;
+                } else {
+                    break;
+                }
+            }
+
+            [self.tokens addObject:[OCIToken token:OCITokenNumber
+                                               text:[self.source substringWithRange:NSMakeRange(start, self.index - start)]
+                                           position:start]];
+            continue;
+        }
+
+        // Identifier / keyword.
+        if ([self isIdentifierStart:c]) {
+            self.index++;
+            while (self.index < length &&
+                   [self isIdentifierPart:[self.source characterAtIndex:self.index]]) {
+                self.index++;
+            }
+
+            [self.tokens addObject:[OCIToken token:OCITokenIdentifier
+                                               text:[self.source substringWithRange:NSMakeRange(start, self.index - start)]
+                                           position:start]];
+            continue;
+        }
+
+        // Longest operators first.
+        NSArray<NSString *> *operators = @[
+            @"==", @"!=", @">=", @"<=", @"&&", @"||",
+            @"++", @"--", @"+=", @"-=", @"*=", @"/=",
+            @"->", @"<<", @">>"
+        ];
+
+        BOOL matched = NO;
+        for (NSString *op in operators) {
+            if (self.index + op.length <= length &&
+                [[self.source substringWithRange:NSMakeRange(self.index, op.length)] isEqualToString:op]) {
+                self.index += op.length;
+                [self.tokens addObject:[OCIToken token:OCITokenSymbol
+                                                   text:op
+                                               position:start]];
+                matched = YES;
+                break;
+            }
+        }
+        if (matched) continue;
+
+        NSString *single = [self.source substringWithRange:NSMakeRange(self.index, 1)];
+        if ([@"[](){};:,.=+-*/%<>!&|?@" containsString:single]) {
+            self.index++;
+            [self.tokens addObject:[OCIToken token:OCITokenSymbol
+                                               text:single
+                                           position:start]];
+            continue;
+        }
+
+        if (error) {
+            *error = [NSString stringWithFormat:@"Unexpected character '%C' at position %lu",
+                      c, (unsigned long)self.index];
+        }
+        return nil;
+    }
+
+    [self.tokens addObject:[OCIToken token:OCITokenEOF text:@"" position:self.index]];
+    return [self.tokens copy];
+}
+
 @end
 
 @interface ExecutorOverlayView : UIView
