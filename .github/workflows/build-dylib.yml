@@ -99,9 +99,7 @@ jobs:
             -fmodules \
             -fsyntax-only \
             src/lib.m \
-            -framework Foundation \
-            -framework UIKit \
-            -framework QuartzCore
+            "${FRAMEWORK_ARGS[@]}"
 
       - name: Compile arm64 iOS dylib
         run: |
@@ -110,6 +108,35 @@ jobs:
           CLANG=$(xcrun --sdk iphoneos -f clang)
           echo "Using SDK: $SDK"
           echo "Using clang: $CLANG"
+
+          # Link Foundation/UIKit/QuartzCore plus every iOS framework explicitly
+          # imported by the submitted source. This lets normal Objective-C
+          # snippets use WebKit, AVFoundation, Security, CoreGraphics, etc.
+          # without requiring the frontend to know the framework list.
+          FRAMEWORK_ARGS=(-framework Foundation -framework UIKit -framework QuartzCore)
+          while IFS= read -r framework; do
+            [ -n "$framework" ] || continue
+            case "$framework" in
+              Foundation|UIKit|QuartzCore|Darwin|objc|os)
+                continue
+                ;;
+            esac
+            if [ -d "$SDK/System/Library/Frameworks/$framework.framework" ] || [ -d "$SDK/System/Library/PrivateFrameworks/$framework.framework" ]; then
+              already=0
+              for existing in "${FRAMEWORK_ARGS[@]}"; do
+                [ "$existing" = "$framework" ] && already=1
+              done
+              [ "$already" -eq 0 ] && FRAMEWORK_ARGS+=(-framework "$framework")
+            fi
+          done < <(
+            {
+              sed -nE 's/^[[:space:]]*#import[[:space:]]*[<"]([A-Za-z0-9_]+)(\/.*)?[>"].*$/\1/p' src/lib.m
+              sed -nE 's/^[[:space:]]*@import[[:space:]]+([A-Za-z0-9_]+)[[:space:]]*;.*/\1/p' src/lib.m
+            } | sort -u
+          )
+
+          echo "Frameworks:"
+          printf '  %s\n' "${FRAMEWORK_ARGS[@]}"
           "$CLANG" \
             -arch arm64 \
             -isysroot "$SDK" \
