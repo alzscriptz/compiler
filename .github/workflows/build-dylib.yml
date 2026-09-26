@@ -35,153 +35,42 @@ jobs:
           SOURCE_RAW: ${{ github.event.client_payload.source || inputs.source_code || '' }}
           FILENAME_IN: ${{ github.event.client_payload.filename || inputs.filename || 'libexample' }}
         run: |
-          set -e
+          set -euo pipefail
           mkdir -p src
-
           if [ -n "$SOURCE_B64" ]; then
             echo "$SOURCE_B64" | base64 -d > src/lib.m
-            echo "Using base64 source"
           elif [ -n "$SOURCE_RAW" ]; then
             printf '%s' "$SOURCE_RAW" > src/lib.m
-            echo "Using raw source"
           else
             echo "ERROR: No source code provided" >&2
             exit 1
           fi
-
-          FILENAME=$(echo "$FILENAME_IN" | tr -cd '[:alnum:]_-')
-          if [ -z "$FILENAME" ]; then
-            FILENAME="libexample"
-          fi
-          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
-
-          echo "===== Source file ====="
+          FILENAME=$(printf '%s' "$FILENAME_IN" | tr -cd '[:alnum:]_-')
+          [ -n "$FILENAME" ] || FILENAME="libexample"
+          echo "FILENAME=$FILENAME" >> "$GITHUB_ENV"
           cat -n src/lib.m
-          echo "======================="
-          ls -la src/
 
-      - name: Compile arm64 iOS dylib (many frameworks)
+      - name: Compile arm64 iOS dylib
         run: |
-          set -e
+          set -euo pipefail
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          CLANG=$(xcrun --sdk iphoneos -f clang)
           echo "Using SDK: $SDK"
-          echo "Output will be: ${FILENAME}.dylib"
-
-          clang -arch arm64 \
-                -isysroot "$SDK" \
-                -miphoneos-version-min=14.0 \
-                -fobjc-arc \
-                -fmodules \
-                -dynamiclib \
-                -o "${FILENAME}.dylib" \
-                src/lib.m \
-                -framework Foundation \
-                -framework UIKit \
-                -framework CoreFoundation \
-                -framework CoreGraphics \
-                -framework QuartzCore \
-                -framework CoreAnimation \
-                -framework AVFoundation \
-                -framework AVKit \
-                -framework AudioToolbox \
-                -framework CoreAudio \
-                -framework CoreMedia \
-                -framework CoreVideo \
-                -framework CoreImage \
-                -framework CoreLocation \
-                -framework CoreMotion \
-                -framework CoreBluetooth \
-                -framework CoreData \
-                -framework CoreML \
-                -framework CoreServices \
-                -framework CoreTelephony \
-                -framework CoreText \
-                -framework CFNetwork \
-                -framework GameKit \
-                -framework GameplayKit \
-                -framework GLKit \
-                -framework ImageIO \
-                -framework MapKit \
-                -framework MediaPlayer \
-                -framework MessageUI \
-                -framework Metal \
-                -framework MetalKit \
-                -framework MetalPerformanceShaders \
-                -framework MobileCoreServices \
-                -framework ModelIO \
-                -framework MultipeerConnectivity \
-                -framework Network \
-                -framework NetworkExtension \
-                -framework NotificationCenter \
-                -framework OpenGLES \
-                -framework Photos \
-                -framework PhotosUI \
-                -framework PushKit \
-                -framework QuickLook \
-                -framework ReplayKit \
-                -framework SafariServices \
-                -framework SceneKit \
-                -framework Security \
-                -framework Social \
-                -framework SpriteKit \
-                -framework StoreKit \
-                -framework SystemConfiguration \
-                -framework UserNotifications \
-                -framework VideoToolbox \
-                -framework WebKit \
-                -framework HealthKit \
-                -framework HomeKit \
-                -framework PassKit \
-                -framework EventKit \
-                -framework EventKitUI \
-                -framework Contacts \
-                -framework ContactsUI \
-                -framework AddressBook \
-                -framework AddressBookUI \
-                -framework Accounts \
-                -framework AdSupport \
-                -framework AppTrackingTransparency \
-                -framework AuthenticationServices \
-                -framework BackgroundTasks \
-                -framework CallKit \
-                -framework CarPlay \
-                -framework ClassKit \
-                -framework ClockKit \
-                -framework Combine \
-                -framework CryptoKit \
-                -framework DeviceCheck \
-                -framework FileProvider \
-                -framework FileProviderUI \
-                -framework IdentityLookup \
-                -framework IdentityLookupUI \
-                -framework Intents \
-                -framework IntentsUI \
-                -framework IOSurface \
-                -framework JavaScriptCore \
-                -framework LocalAuthentication \
-                -framework NaturalLanguage \
-                -framework NearbyInteraction \
-                -framework OSLog \
-                -framework PencilKit \
-                -framework PDFKit \
-                -framework Speech \
-                -framework SwiftUI \
-                -framework UniformTypeIdentifiers \
-                -framework Vision \
-                -framework VisionKit \
-                -framework WidgetKit \
-                -framework CloudKit \
-                -framework CryptoTokenKit \
-                -framework ExternalAccessory \
-                -framework GSS \
-                -framework IOKit \
-                -framework libxml2 \
-                -framework libz
-
-          echo "===== Built file ====="
+          echo "Using clang: $CLANG"
+          "$CLANG" \
+            -arch arm64 \
+            -isysroot "$SDK" \
+            -miphoneos-version-min=14.0 \
+            -fobjc-arc \
+            -fmodules \
+            -dynamiclib \
+            -o "${FILENAME}.dylib" \
+            src/lib.m \
+            -framework Foundation \
+            -framework UIKit \
+            -framework QuartzCore
           file "${FILENAME}.dylib"
           ls -lh "${FILENAME}.dylib"
-          echo "======================"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
