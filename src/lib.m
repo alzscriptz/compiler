@@ -1,5 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <mach/mach.h>
+#import <mach-o/dyld.h>
 
 typedef NS_ENUM(NSInteger, MinimizePosition) {
     MinimizePositionTopLeft,
@@ -60,17 +62,43 @@ typedef NS_ENUM(NSInteger, UITheme) {
     [self loadIconImage];
 }
 
+#pragma mark - Memory Writing Core
+
+- (uintptr_t)getProcessBaseAddress {
+    return (uintptr_t)_dyld_get_image_header(0);
+}
+
+- (BOOL)writeMemoryAtOffset:(uintptr_t)offset value:(int)newValue {
+    uintptr_t baseAddress = [self getProcessBaseAddress];
+    uintptr_t targetAddress = baseAddress + offset;
+    
+    kern_return_t kr;
+    mach_port_t task = mach_task_self();
+    
+    // Change memory protection to RWX
+    kr = vm_protect(task, (vm_address_t)targetAddress, sizeof(int), FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+    if (kr != KERN_SUCCESS) {
+        return NO;
+    }
+    
+    // Write new value to memory
+    kr = vm_write(task, (vm_address_t)targetAddress, (vm_offset_t)&newValue, sizeof(int));
+    if (kr != KERN_SUCCESS) {
+        return NO;
+    }
+    
+    return YES;
+}
+
 #pragma mark - Theme Configuration
 
 - (void)setupThemeColors {
     if (self.currentTheme == UIThemeStrongests) {
-        // Dark metallic purple/blue aesthetic
         self.backgroundColor = [UIColor colorWithRed:0.08 green:0.09 blue:0.14 alpha:0.95];
         self.panelColor = [UIColor colorWithRed:0.12 green:0.14 blue:0.22 alpha:0.90];
         self.accentColor = [UIColor colorWithRed:0.55 green:0.35 blue:0.95 alpha:1.0];
         self.textColor = [UIColor whiteColor];
     } else {
-        // Lazy Genius - Warm neon gold/amber aesthetic
         self.backgroundColor = [UIColor colorWithRed:0.12 green:0.10 blue:0.08 alpha:0.95];
         self.panelColor = [UIColor colorWithRed:0.18 green:0.15 blue:0.12 alpha:0.90];
         self.accentColor = [UIColor colorWithRed:1.00 green:0.65 blue:0.15 alpha:1.0];
@@ -92,7 +120,6 @@ typedef NS_ENUM(NSInteger, UITheme) {
 - (void)setupMainUI {
     self.view.backgroundColor = [UIColor clearColor];
     
-    // 80% Screen Bounds Calculation
     CGFloat width = self.view.bounds.size.width * 0.80;
     CGFloat height = self.view.bounds.size.height * 0.80;
     CGFloat x = (self.view.bounds.size.width - width) / 2.0;
@@ -115,7 +142,7 @@ typedef NS_ENUM(NSInteger, UITheme) {
     self.headerIconImageView = [[UIImageView alloc] initWithFrame:CGRectMake(12, 10, 30, 30)];
     self.headerIconImageView.layer.cornerRadius = 6.0;
     self.headerIconImageView.clipsToBounds = YES;
-    self.headerIconImageView.backgroundColor = [UIColor darkGrayColor];
+    self.headerIconImageView.contentMode = UIViewContentModeScaleAspectFit;
     [headerView addSubview:self.headerIconImageView];
     
     // Title Label
@@ -125,7 +152,7 @@ typedef NS_ENUM(NSInteger, UITheme) {
     titleLabel.font = [UIFont boldSystemFontOfSize:16];
     [headerView addSubview:titleLabel];
     
-    // Minimize Button (Top Right)
+    // Minimize Button
     UIButton *minButton = [UIButton buttonWithType:UIButtonTypeSystem];
     minButton.frame = CGRectMake(width - 42, 10, 30, 30);
     [minButton setTitle:@"-" forState:UIControlStateNormal];
@@ -135,7 +162,7 @@ typedef NS_ENUM(NSInteger, UITheme) {
     [minButton addTarget:self action:@selector(minimizeUI) forControlEvents:UIControlEventTouchUpInside];
     [headerView addSubview:minButton];
     
-    // Left Navigation Sidebar
+    // Left Sidebar Navigation
     UIView *sidebar = [[UIView alloc] initWithFrame:CGRectMake(0, 50, 120, height - 50)];
     sidebar.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.2];
     [self.mainContainerView addSubview:sidebar];
@@ -154,7 +181,6 @@ typedef NS_ENUM(NSInteger, UITheme) {
         [sidebar addSubview:tabBtn];
     }
     
-    // Main Content Area
     self.contentAreaView = [[UIView alloc] initWithFrame:CGRectMake(120, 50, width - 120, height - 50)];
     [self.mainContainerView addSubview:self.contentAreaView];
 }
@@ -172,6 +198,7 @@ typedef NS_ENUM(NSInteger, UITheme) {
     UIImageView *minIcon = [[UIImageView alloc] initWithFrame:CGRectMake(8, 10, 30, 30)];
     minIcon.layer.cornerRadius = 6.0;
     minIcon.clipsToBounds = YES;
+    minIcon.contentMode = UIViewContentModeScaleAspectFit;
     minIcon.image = self.headerIconImageView.image;
     [self.minimizedView addSubview:minIcon];
     
@@ -198,7 +225,7 @@ typedef NS_ENUM(NSInteger, UITheme) {
     CGFloat sw = self.view.bounds.size.width;
     CGFloat sh = self.view.bounds.size.height;
     
-    CGRect frame = CGRectMake(sw - w - pad, pad, w, h); // Default Top Right
+    CGRect frame = CGRectMake(sw - w - pad, pad, w, h);
     switch (self.currentMinimizePos) {
         case MinimizePositionTopLeft:
             frame = CGRectMake(pad, pad, w, h);
@@ -216,25 +243,21 @@ typedef NS_ENUM(NSInteger, UITheme) {
     self.minimizedView.frame = frame;
 }
 
-#pragma mark - Tab Views Setup
+#pragma mark - Content Navigation
 
 - (void)setupContentTabs {
-    // 1. Main Tab
     self.mainTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
     UILabel *mLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 20, 200, 30)];
     mLabel.text = @"Main Controls";
     mLabel.textColor = [UIColor whiteColor];
     [self.mainTabView addSubview:mLabel];
     
-    // 2. Dupe Tab
     self.dupeTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
     [self setupDupeTabContent];
     
-    // 3. Settings Tab
     self.settingsTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
     [self setupSettingsTabContent];
     
-    // 4. Credits Tab
     self.creditsTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
     [self setupCreditsTabContent];
     
@@ -276,10 +299,10 @@ typedef NS_ENUM(NSInteger, UITheme) {
     self.dupeTableView.clipsToBounds = YES;
     [self.dupeTabView addSubview:self.dupeTableView];
     
-    // Lower Input Box & Action Buttons
     CGFloat yPos = self.contentAreaView.bounds.size.height - 70;
     self.dupeTextField = [[UITextField alloc] initWithFrame:CGRectMake(20, yPos, 140, 40)];
     self.dupeTextField.placeholder = @"Value...";
+    self.dupeTextField.keyboardType = UIKeyboardTypeNumberPad;
     self.dupeTextField.backgroundColor = [UIColor colorWithWhite:0.2 alpha:0.8];
     self.dupeTextField.textColor = [UIColor whiteColor];
     self.dupeTextField.layer.cornerRadius = 8;
@@ -301,7 +324,7 @@ typedef NS_ENUM(NSInteger, UITheme) {
     self.isDupeListExpanded = !self.isDupeListExpanded;
     [UIView animateWithDuration:0.3 animations:^{
         CGRect frame = self.dupeTableView.frame;
-        frame.size.height = self.isDupeListExpanded ? 80 : 0;
+        frame.size.height = self.isDupeListExpanded ? 50 : 0;
         self.dupeTableView.frame = frame;
     }];
 }
@@ -351,7 +374,6 @@ typedef NS_ENUM(NSInteger, UITheme) {
 }
 
 - (void)toggleHideRecording:(UISwitch *)sender {
-    // Screen capture protection overlay toggle
     if ([self.view.window respondsToSelector:@selector(setPreventsCapture:)]) {
         [self.view.window performSelector:@selector(setPreventsCapture:) withObject:@(sender.isOn)];
     }
@@ -380,7 +402,6 @@ typedef NS_ENUM(NSInteger, UITheme) {
 - (void)copyDiscordLink {
     [UIPasteboard generalPasteboard].string = @"discord.gg/DKdAG9VTjh";
     
-    // Quick Feedback VFX
     UILabel *copiedToast = [[UILabel alloc] initWithFrame:CGRectMake(20, 125, 220, 25)];
     copiedToast.text = @"Copied to clipboard!";
     copiedToast.textColor = [UIColor greenColor];
@@ -403,7 +424,7 @@ typedef NS_ENUM(NSInteger, UITheme) {
 
 - (void)buttonTouchDown:(UIButton *)btn {
     [UIView animateWithDuration:0.15 animations:^{
-        btn.transform = CGAffineTransformMakeScale(1.08, 1.08); // "Come closer" effect
+        btn.transform = CGAffineTransformMakeScale(1.08, 1.08);
     }];
 }
 
@@ -414,7 +435,6 @@ typedef NS_ENUM(NSInteger, UITheme) {
 }
 
 - (void)triggerCoolVFXOnView:(UIView *)targetView {
-    // Glowing pulse effect
     CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
     pulse.duration = 0.2;
     pulse.repeatCount = 1;
@@ -437,17 +457,32 @@ typedef NS_ENUM(NSInteger, UITheme) {
     self.mainContainerView.hidden = NO;
 }
 
-#pragma mark - Keyboard Delegate
+#pragma mark - Memory Execution Actions
+
+- (void)executeMemoryModification {
+    int valueToSet = [self.dupeTextField.text intValue];
+    BOOL success = [self writeMemoryAtOffset:0x11d833b18 value:valueToSet];
+    
+    [self triggerCoolVFXOnView:self.dupeTextField];
+    [self.dupeTextField resignFirstResponder];
+    
+    if (success) {
+        self.dupeTextField.layer.borderColor = [UIColor greenColor].CGColor;
+        self.dupeTextField.layer.borderWidth = 1.5;
+    } else {
+        self.dupeTextField.layer.borderColor = [UIColor redColor].CGColor;
+        self.dupeTextField.layer.borderWidth = 1.5;
+    }
+}
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
-    [textField resignFirstResponder]; // Hide keyboard on Send tap
-    [self triggerCoolVFXOnView:textField];
+    [self executeMemoryModification];
     return YES;
 }
 
 - (void)handleSetAction:(UIButton *)sender {
     [self triggerCoolVFXOnView:sender];
-    [self.dupeTextField resignFirstResponder];
+    [self executeMemoryModification];
 }
 
 #pragma mark - TableView Delegate (Dupe Items)
@@ -459,35 +494,37 @@ typedef NS_ENUM(NSInteger, UITheme) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"dupeCell"];
     if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"dupeCell"];
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"dupeCell"];
         cell.backgroundColor = [UIColor clearColor];
         cell.textLabel.textColor = [UIColor whiteColor];
-        cell.detailTextLabel.textColor = [UIColor lightGrayColor];
+        cell.textLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     }
     cell.textLabel.text = @"Parsnip seed";
-    cell.detailTextLabel.text = @"base + 0x11d833b18";
     return cell;
 }
 
-#pragma mark - Image Downloader
+#pragma mark - Embedded Custom Image Loader
 
 - (void)loadIconImage {
-    NSString *urlString = @"https://s142.convertio.me/p/m8eu8iTaugBcalmDfo5PiQ/7e7639715e33888f881fe89e1d094700/IMG_0713.png";
-    NSURL *url = [NSURL URLWithString:urlString];
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
-        NSData *data = [NSData dataWithContentsOfURL:url];
-        if (data) {
-            UIImage *img = [UIImage imageWithData:data];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                self.headerIconImageView.image = img;
-            });
-        }
-    });
+    // Generate star/stardew emblem programmatically if network image fails
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(30, 30), NO, 0.0);
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    CGContextSetFillColorWithColor(ctx, [UIColor systemOrangeColor].CGColor);
+    CGContextFillEllipseInRect(ctx, CGRectMake(2, 2, 26, 26));
+    
+    CGContextSetFillColorWithColor(ctx, [UIColor whiteColor].CGColor);
+    UIFont *font = [UIFont boldSystemFontOfSize:16];
+    [@"K" drawInRect:CGRectMake(8, 4, 20, 20) withAttributes:@{NSFontAttributeName: font, NSForegroundColorAttributeName: [UIColor whiteColor]}];
+    
+    UIImage *embeddedIcon = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    self.headerIconImageView.image = embeddedIcon;
 }
 
 @end
 
-#pragma mark - LiveContainer Dylib Injection Entry Point
+#pragma mark - Constructor Injection
 
 static StardewMenuViewController *menuVC = nil;
 
