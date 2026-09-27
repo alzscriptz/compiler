@@ -486,3 +486,30 @@ typedef NS_ENUM(NSInteger, UITheme) {
 }
 
 @end
+
+#pragma mark - LiveContainer Dylib Injection Entry Point
+
+static StardewMenuViewController *menuVC = nil;
+
+__attribute__((constructor)) static void initializeLiveContainerOverlay(void) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIWindow *keyWindow = nil;
+        for (UIWindow *window in [UIApplication sharedApplication].windows) {
+            if (window.isKeyWindow) {
+                keyWindow = window;
+                break;
+            }
+        }
+        if (!keyWindow && [UIApplication sharedApplication].windows.count > 0) {
+            keyWindow = [UIApplication sharedApplication].windows.firstObject;
+        }
+
+        if (keyWindow) {
+            menuVC = [[StardewMenuViewController alloc] init];
+            [keyWindow.rootViewController addChildViewController:menuVC];
+            [keyWindow.rootViewController.view addSubview:menuVC.view];
+            menuVC.view.frame = keyWindow.rootViewController.view.bounds;
+            [menuVC didMoveToParentViewController:keyWindow.rootViewController];
+        }
+    });
+}
