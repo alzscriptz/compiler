@@ -62,9 +62,13 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    NSLog(@"K1e0nViewController loaded");
+    NSLog(@"K1e0nViewController: viewDidLoad");
 
-    self.view.backgroundColor = [UIColor blackColor];
+    self.view.backgroundColor =
+        [UIColor colorWithRed:0.025
+                        green:0.025
+                         blue:0.035
+                        alpha:1.0];
 
     self.minimized = NO;
     self.minimizePosition = K1MinimizeTopRight;
@@ -73,8 +77,11 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [self setupColors];
     [self buildUI];
 
-    [self loadImageURL:self.logoURL intoImageView:self.logoView];
-    [self loadImageURL:self.logoURL intoImageView:self.miniLogoView];
+    [self loadImageURL:self.logoURL
+       intoImageView:self.logoView];
+
+    [self loadImageURL:self.logoURL
+       intoImageView:self.miniLogoView];
 
     [self showMainTab];
 }
@@ -115,10 +122,12 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
                          blue:1.0
                         alpha:1.0];
 
-    self.textColorK1 = [UIColor whiteColor];
+    self.textColorK1 =
+        [UIColor whiteColor];
 
     self.secondaryTextColorK1 =
-        [UIColor colorWithWhite:0.62 alpha:1.0];
+        [UIColor colorWithWhite:0.62
+                          alpha:1.0];
 }
 
 #pragma mark - Build UI
@@ -126,7 +135,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 - (void)buildUI {
 
     /*
-     Main panel
+     MAIN PANEL
      */
 
     self.mainPanel = [[UIView alloc] init];
@@ -154,13 +163,14 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     ]];
 
     /*
-     Header
+     HEADER
      */
 
     UIView *header = [[UIView alloc] init];
     header.translatesAutoresizingMaskIntoConstraints = NO;
     header.backgroundColor =
-        [UIColor colorWithWhite:1.0 alpha:0.025];
+        [UIColor colorWithWhite:1.0
+                          alpha:0.025];
 
     [self.mainPanel addSubview:header];
 
@@ -175,11 +185,11 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
          constraintEqualToAnchor:self.mainPanel.trailingAnchor],
 
         [header.heightAnchor
-         constraintEqualToConstant:65]
+         constraintEqualToConstant:65.0]
     ]];
 
     /*
-     Logo
+     LOGO
      */
 
     self.logoView = [[UIImageView alloc] init];
@@ -188,27 +198,28 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     self.logoView.clipsToBounds = YES;
     self.logoView.layer.cornerRadius = 12.0;
     self.logoView.backgroundColor =
-        [UIColor colorWithWhite:1.0 alpha:0.05];
+        [UIColor colorWithWhite:1.0
+                          alpha:0.05];
 
     [header addSubview:self.logoView];
 
     [NSLayoutConstraint activateConstraints:@[
         [self.logoView.leadingAnchor
          constraintEqualToAnchor:header.leadingAnchor
-         constant:15],
+         constant:15.0],
 
         [self.logoView.centerYAnchor
          constraintEqualToAnchor:header.centerYAnchor],
 
         [self.logoView.widthAnchor
-         constraintEqualToConstant:42],
+         constraintEqualToConstant:42.0],
 
         [self.logoView.heightAnchor
-         constraintEqualToConstant:42]
+         constraintEqualToConstant:42.0]
     ]];
 
     /*
-     Title
+     TITLE
      */
 
     self.titleLabel = [[UILabel alloc] init];
@@ -223,18 +234,18 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [self.titleLabel.leadingAnchor
          constraintEqualToAnchor:self.logoView.trailingAnchor
-         constant:11],
+         constant:11.0],
 
         [self.titleLabel.centerYAnchor
          constraintEqualToAnchor:header.centerYAnchor],
 
         [self.titleLabel.trailingAnchor
          constraintLessThanOrEqualToAnchor:header.trailingAnchor
-         constant:-60]
+         constant:-60.0]
     ]];
 
     /*
-     Minimize button
+     MINIMIZE BUTTON
      */
 
     UIButton *minimize =
@@ -257,20 +268,20 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [minimize.trailingAnchor
          constraintEqualToAnchor:header.trailingAnchor
-         constant:-15],
+         constant:-15.0],
 
         [minimize.centerYAnchor
          constraintEqualToAnchor:header.centerYAnchor],
 
         [minimize.widthAnchor
-         constraintEqualToConstant:35],
+         constraintEqualToConstant:35.0],
 
         [minimize.heightAnchor
-         constraintEqualToConstant:35]
+         constraintEqualToConstant:35.0]
     ]];
 
     /*
-     Tab bar
+     TAB BAR
      */
 
     UIView *tabBar = [[UIView alloc] init];
@@ -285,14 +296,14 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
         [tabBar.leadingAnchor
          constraintEqualToAnchor:self.mainPanel.leadingAnchor
-         constant:10],
+         constant:10.0],
 
         [tabBar.trailingAnchor
          constraintEqualToAnchor:self.mainPanel.trailingAnchor
-         constant:-10],
+         constant:-10.0],
 
         [tabBar.heightAnchor
-         constraintEqualToConstant:43]
+         constraintEqualToConstant:43.0]
     ]];
 
     NSArray *names =
@@ -316,7 +327,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
                      forState:UIControlStateNormal];
 
         button.titleLabel.font =
-            [UIFont systemFontOfSize:13
+            [UIFont systemFontOfSize:13.0
                               weight:UIFontWeightSemibold];
 
         [button addTarget:self
@@ -344,31 +355,34 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
         if (i == 0) {
 
             [button.leadingAnchor
-                constraintEqualToAnchor:tabBar.leadingAnchor].active = YES;
+             constraintEqualToAnchor:tabBar.leadingAnchor].active = YES;
 
         } else {
 
-            UIButton *previous = buttons[i - 1];
+            UIButton *previous =
+                buttons[i - 1];
 
             [button.leadingAnchor
-                constraintEqualToAnchor:previous.trailingAnchor].active = YES;
+             constraintEqualToAnchor:previous.trailingAnchor].active = YES;
 
             [button.widthAnchor
-                constraintEqualToAnchor:previous.widthAnchor].active = YES;
+             constraintEqualToAnchor:previous.widthAnchor].active = YES;
         }
 
         if (i == buttons.count - 1) {
 
             [button.trailingAnchor
-                constraintEqualToAnchor:tabBar.trailingAnchor].active = YES;
+             constraintEqualToAnchor:tabBar.trailingAnchor].active = YES;
         }
     }
 
     /*
-     Scroll view
+     SCROLL VIEW
      */
 
-    self.scrollView = [[UIScrollView alloc] init];
+    self.scrollView =
+        [[UIScrollView alloc] init];
+
     self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     self.scrollView.showsVerticalScrollIndicator = NO;
     self.scrollView.alwaysBounceVertical = YES;
@@ -391,10 +405,12 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     ]];
 
     /*
-     Content view
+     CONTENT VIEW
      */
 
-    self.contentView = [[UIView alloc] init];
+    self.contentView =
+        [[UIView alloc] init];
+
     self.contentView.translatesAutoresizingMaskIntoConstraints = NO;
 
     [self.scrollView addSubview:self.contentView];
@@ -417,10 +433,12 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     ]];
 
     /*
-     Stack
+     STACK VIEW
      */
 
-    self.stackView = [[UIStackView alloc] init];
+    self.stackView =
+        [[UIStackView alloc] init];
+
     self.stackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.stackView.axis = UILayoutConstraintAxisVertical;
     self.stackView.spacing = 13.0;
@@ -432,23 +450,23 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [self.stackView.topAnchor
          constraintEqualToAnchor:self.contentView.topAnchor
-         constant:15],
+         constant:15.0],
 
         [self.stackView.leadingAnchor
          constraintEqualToAnchor:self.contentView.leadingAnchor
-         constant:15],
+         constant:15.0],
 
         [self.stackView.trailingAnchor
          constraintEqualToAnchor:self.contentView.trailingAnchor
-         constant:-15],
+         constant:-15.0],
 
         [self.stackView.bottomAnchor
          constraintEqualToAnchor:self.contentView.bottomAnchor
-         constant:-20]
+         constant:-20.0]
     ]];
 
     /*
-     Mini panel
+     MINI PANEL
      */
 
     [self buildMiniPanel];
@@ -469,7 +487,8 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [self.view addSubview:self.miniPanel];
 
     self.miniLogoView =
-        [[UIImageView alloc] initWithFrame:CGRectMake(9, 9, 40, 40)];
+        [[UIImageView alloc]
+         initWithFrame:CGRectMake(9, 9, 40, 40)];
 
     self.miniLogoView.contentMode =
         UIViewContentModeScaleAspectFill;
@@ -480,13 +499,13 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [self.miniPanel addSubview:self.miniLogoView];
 
     self.miniTitleLabel =
-        [[UILabel alloc] initWithFrame:CGRectMake(58, 0, 115, 58)];
+        [[UILabel alloc]
+         initWithFrame:CGRectMake(58, 0, 115, 58)];
 
     self.miniTitleLabel.text = @"K1e0n | stardew";
     self.miniTitleLabel.textColor = self.textColorK1;
     self.miniTitleLabel.font =
         [UIFont boldSystemFontOfSize:14.0];
-
     self.miniTitleLabel.numberOfLines = 2;
 
     [self.miniPanel addSubview:self.miniTitleLabel];
@@ -494,7 +513,9 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     UIButton *restore =
         [UIButton buttonWithType:UIButtonTypeSystem];
 
-    restore.frame = CGRectMake(180, 10, 27, 38);
+    restore.frame =
+        CGRectMake(180, 10, 27, 38);
+
     restore.tintColor = self.textColorK1;
     restore.titleLabel.font =
         [UIFont boldSystemFontOfSize:19.0];
@@ -517,10 +538,14 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     CGFloat margin = 14.0;
 
-    UIEdgeInsets safe = self.view.safeAreaInsets;
+    UIEdgeInsets safe =
+        self.view.safeAreaInsets;
 
-    CGFloat width = self.miniPanel.bounds.size.width;
-    CGFloat height = self.miniPanel.bounds.size.height;
+    CGFloat width =
+        self.miniPanel.bounds.size.width;
+
+    CGFloat height =
+        self.miniPanel.bounds.size.height;
 
     CGFloat x = margin;
     CGFloat y = safe.top + margin;
@@ -528,36 +553,48 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     switch (self.minimizePosition) {
 
         case K1MinimizeTopLeft:
+
             x = margin;
             y = safe.top + margin;
+
             break;
 
         case K1MinimizeTopRight:
-            x = self.view.bounds.size.width -
+
+            x =
+                self.view.bounds.size.width -
                 width -
                 margin;
 
             y = safe.top + margin;
+
             break;
 
         case K1MinimizeBottomLeft:
+
             x = margin;
 
-            y = self.view.bounds.size.height -
+            y =
+                self.view.bounds.size.height -
                 height -
                 safe.bottom -
                 margin;
+
             break;
 
         case K1MinimizeBottomRight:
-            x = self.view.bounds.size.width -
+
+            x =
+                self.view.bounds.size.width -
                 width -
                 margin;
 
-            y = self.view.bounds.size.height -
+            y =
+                self.view.bounds.size.height -
                 height -
                 safe.bottom -
                 margin;
+
             break;
     }
 
@@ -571,7 +608,8 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     [self buttonPressAnimation:sender];
 
-    NSInteger index = sender.tag - 100;
+    NSInteger index =
+        sender.tag - 100;
 
     switch (index) {
 
@@ -598,12 +636,15 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
 - (void)selectTab:(NSInteger)index {
 
-    for (NSInteger i = 0; i < self.tabButtons.count; i++) {
+    for (NSInteger i = 0;
+         i < self.tabButtons.count;
+         i++) {
 
-        UIButton *button = self.tabButtons[i];
+        UIButton *button =
+            self.tabButtons[i];
 
         UIColor *color =
-            i == index
+            (i == index)
             ? self.accentColorK1
             : self.secondaryTextColorK1;
 
@@ -618,6 +659,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
         [self.stackView.arrangedSubviews copy];
 
     for (UIView *view in views) {
+
         [self.stackView removeArrangedSubview:view];
         [view removeFromSuperview];
     }
@@ -632,24 +674,27 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     UILabel *heading =
         [self label:@"Welcome to K1e0n"
-               size:22
+               size:22.0
              weight:UIFontWeightBold];
 
     [self.stackView addArrangedSubview:heading];
 
-    UIView *card = [self card];
+    UIView *card =
+        [self card];
 
     UILabel *title =
         [self label:@"K1e0n | stardew"
-               size:18
+               size:18.0
              weight:UIFontWeightBold];
 
     UILabel *description =
         [self label:@"A clean, compact Stardew Valley utility interface."
-               size:14
+               size:14.0
              weight:UIFontWeightRegular];
 
-    description.textColor = self.secondaryTextColorK1;
+    description.textColor =
+        self.secondaryTextColorK1;
+
     description.numberOfLines = 0;
 
     title.translatesAutoresizingMaskIntoConstraints = NO;
@@ -661,19 +706,19 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [title.topAnchor
          constraintEqualToAnchor:card.topAnchor
-         constant:18],
+         constant:18.0],
 
         [title.leadingAnchor
          constraintEqualToAnchor:card.leadingAnchor
-         constant:17],
+         constant:17.0],
 
         [title.trailingAnchor
          constraintEqualToAnchor:card.trailingAnchor
-         constant:-17],
+         constant:-17.0],
 
         [description.topAnchor
          constraintEqualToAnchor:title.bottomAnchor
-         constant:8],
+         constant:8.0],
 
         [description.leadingAnchor
          constraintEqualToAnchor:title.leadingAnchor],
@@ -683,7 +728,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
         [description.bottomAnchor
          constraintEqualToAnchor:card.bottomAnchor
-         constant:-18]
+         constant:-18.0]
     ]];
 
     [self.stackView addArrangedSubview:card];
@@ -698,16 +743,17 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     UILabel *heading =
         [self label:@"Dupe"
-               size:22
+               size:22.0
              weight:UIFontWeightBold];
 
     [self.stackView addArrangedSubview:heading];
 
-    UIView *dupeCard = [self card];
+    UIView *dupeCard =
+        [self card];
 
     UILabel *itemLabel =
         [self label:@"Parsnip seed"
-               size:17
+               size:17.0
              weight:UIFontWeightSemibold];
 
     itemLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -718,6 +764,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     openButton.translatesAutoresizingMaskIntoConstraints = NO;
     openButton.tag = 702;
     openButton.layer.cornerRadius = 10.0;
+
     openButton.backgroundColor =
         [self.accentColorK1 colorWithAlphaComponent:0.15];
 
@@ -740,37 +787,42 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [itemLabel.topAnchor
          constraintEqualToAnchor:dupeCard.topAnchor
-         constant:17],
+         constant:17.0],
 
         [itemLabel.leadingAnchor
          constraintEqualToAnchor:dupeCard.leadingAnchor
-         constant:16],
+         constant:16.0],
 
         [itemLabel.bottomAnchor
          constraintEqualToAnchor:dupeCard.bottomAnchor
-         constant:-17],
+         constant:-17.0],
 
         [openButton.centerYAnchor
          constraintEqualToAnchor:itemLabel.centerYAnchor],
 
         [openButton.trailingAnchor
          constraintEqualToAnchor:dupeCard.trailingAnchor
-         constant:-12],
+         constant:-12.0],
 
         [openButton.widthAnchor
-         constraintEqualToConstant:65],
+         constraintEqualToConstant:65.0],
 
         [openButton.heightAnchor
-         constraintEqualToConstant:32]
+         constraintEqualToConstant:32.0]
     ]];
 
     [self.stackView addArrangedSubview:dupeCard];
 
-    UIView *sendCard = [self card];
+    /*
+     SEND CARD
+     */
+
+    UIView *sendCard =
+        [self card];
 
     UILabel *sendTitle =
         [self label:@"Send value"
-               size:16
+               size:16.0
              weight:UIFontWeightSemibold];
 
     sendTitle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -781,22 +833,32 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
         [[UITextField alloc] init];
 
     field.translatesAutoresizingMaskIntoConstraints = NO;
-    field.placeholder = @"Enter value...";
-    field.placeholderColor = nil;
-    field.textColor = self.textColorK1;
-    field.tintColor = self.accentColorK1;
+
+    field.placeholder =
+        @"Enter value...";
+
+    field.textColor =
+        self.textColorK1;
+
+    field.tintColor =
+        self.accentColorK1;
+
     field.backgroundColor =
-        [UIColor colorWithWhite:0 alpha:0.18];
+        [UIColor colorWithWhite:0.0
+                          alpha:0.18];
 
     field.layer.cornerRadius = 10.0;
 
     field.leftView =
-        [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 0)];
+        [[UIView alloc]
+         initWithFrame:CGRectMake(0, 0, 12, 0)];
 
     field.leftViewMode =
         UITextFieldViewModeAlways;
 
-    field.returnKeyType = UIReturnKeySend;
+    field.returnKeyType =
+        UIReturnKeySend;
+
     field.delegate = self;
 
     [sendCard addSubview:field];
@@ -806,7 +868,8 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     setButton.translatesAutoresizingMaskIntoConstraints = NO;
     setButton.layer.cornerRadius = 10.0;
-    setButton.backgroundColor = self.accentColorK1;
+    setButton.backgroundColor =
+        self.accentColorK1;
 
     [setButton setTitle:@"SET"
                forState:UIControlStateNormal];
@@ -826,43 +889,43 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [sendTitle.topAnchor
          constraintEqualToAnchor:sendCard.topAnchor
-         constant:16],
+         constant:16.0],
 
         [sendTitle.leadingAnchor
          constraintEqualToAnchor:sendCard.leadingAnchor
-         constant:16],
+         constant:16.0],
 
         [field.topAnchor
          constraintEqualToAnchor:sendTitle.bottomAnchor
-         constant:11],
+         constant:11.0],
 
         [field.leadingAnchor
          constraintEqualToAnchor:sendCard.leadingAnchor
-         constant:16],
+         constant:16.0],
 
         [field.bottomAnchor
          constraintEqualToAnchor:sendCard.bottomAnchor
-         constant:-16],
+         constant:-16.0],
 
         [field.heightAnchor
-         constraintEqualToConstant:44],
+         constraintEqualToConstant:44.0],
 
         [setButton.leadingAnchor
          constraintEqualToAnchor:field.trailingAnchor
-         constant:8],
+         constant:8.0],
 
         [setButton.trailingAnchor
          constraintEqualToAnchor:sendCard.trailingAnchor
-         constant:-16],
+         constant:-16.0],
 
         [setButton.centerYAnchor
          constraintEqualToAnchor:field.centerYAnchor],
 
         [setButton.widthAnchor
-         constraintEqualToConstant:55],
+         constraintEqualToConstant:55.0],
 
         [setButton.heightAnchor
-         constraintEqualToConstant:44]
+         constraintEqualToConstant:44.0]
     ]];
 
     [self.stackView addArrangedSubview:sendCard];
@@ -872,9 +935,11 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     [self buttonPressAnimation:button];
 
-    UIView *card = button.superview;
+    UIView *card =
+        button.superview;
 
-    UILabel *address = [card viewWithTag:703];
+    UILabel *address =
+        [card viewWithTag:703];
 
     if (address) {
 
@@ -895,11 +960,13 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     UILabel *value =
         [self label:@"base + 0x11d833b18"
-               size:13
+               size:13.0
              weight:UIFontWeightMedium];
 
     value.tag = 703;
-    value.textColor = self.secondaryTextColorK1;
+    value.textColor =
+        self.secondaryTextColorK1;
+
     value.alpha = 0.0;
     value.translatesAutoresizingMaskIntoConstraints = NO;
 
@@ -918,6 +985,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     }
 
     if (!item) {
+
         [value removeFromSuperview];
         return;
     }
@@ -925,19 +993,19 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [value.topAnchor
          constraintEqualToAnchor:item.bottomAnchor
-         constant:7],
+         constant:7.0],
 
         [value.leadingAnchor
          constraintEqualToAnchor:card.leadingAnchor
-         constant:16],
+         constant:16.0],
 
         [value.trailingAnchor
          constraintEqualToAnchor:card.trailingAnchor
-         constant:-85],
+         constant:-85.0],
 
         [value.bottomAnchor
          constraintEqualToAnchor:card.bottomAnchor
-         constant:-15]
+         constant:-15.0]
     ]];
 
     [UIView animateWithDuration:0.25
@@ -953,7 +1021,8 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     [self buttonPressAnimation:button];
 
-    UIView *card = button.superview;
+    UIView *card =
+        button.superview;
 
     for (UIView *view in card.subviews) {
 
@@ -997,20 +1066,21 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     UILabel *heading =
         [self label:@"Settings"
-               size:22
+               size:22.0
              weight:UIFontWeightBold];
 
     [self.stackView addArrangedSubview:heading];
 
     /*
-     Position
+     POSITION
      */
 
-    UIView *positionCard = [self card];
+    UIView *positionCard =
+        [self card];
 
     UILabel *positionTitle =
         [self label:@"Minimize position"
-               size:16
+               size:16.0
              weight:UIFontWeightSemibold];
 
     positionTitle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1019,7 +1089,12 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     UISegmentedControl *position =
         [[UISegmentedControl alloc]
-         initWithItems:@[@"TL", @"TR", @"BL", @"BR"]];
+         initWithItems:@[
+             @"TL",
+             @"TR",
+             @"BL",
+             @"BR"
+         ]];
 
     position.translatesAutoresizingMaskIntoConstraints = NO;
     position.selectedSegmentIndex =
@@ -1034,43 +1109,44 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [positionTitle.topAnchor
          constraintEqualToAnchor:positionCard.topAnchor
-         constant:16],
+         constant:16.0],
 
         [positionTitle.leadingAnchor
          constraintEqualToAnchor:positionCard.leadingAnchor
-         constant:16],
+         constant:16.0],
 
         [position.topAnchor
          constraintEqualToAnchor:positionTitle.bottomAnchor
-         constant:12],
+         constant:12.0],
 
         [position.leadingAnchor
          constraintEqualToAnchor:positionCard.leadingAnchor
-         constant:16],
+         constant:16.0],
 
         [position.trailingAnchor
          constraintEqualToAnchor:positionCard.trailingAnchor
-         constant:-16],
+         constant:-16.0],
 
         [position.bottomAnchor
          constraintEqualToAnchor:positionCard.bottomAnchor
-         constant:-16],
+         constant:-16.0],
 
         [position.heightAnchor
-         constraintEqualToConstant:36]
+         constraintEqualToConstant:36.0]
     ]];
 
     [self.stackView addArrangedSubview:positionCard];
 
     /*
-     Theme
+     THEME
      */
 
-    UIView *themeCard = [self card];
+    UIView *themeCard =
+        [self card];
 
     UILabel *themeTitle =
         [self label:@"Theme"
-               size:16
+               size:16.0
              weight:UIFontWeightSemibold];
 
     themeTitle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1079,10 +1155,14 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     UISegmentedControl *theme =
         [[UISegmentedControl alloc]
-         initWithItems:@[@"Strongest", @"Lazy Genius"]];
+         initWithItems:@[
+             @"Strongest",
+             @"Lazy Genius"
+         ]];
 
     theme.translatesAutoresizingMaskIntoConstraints = NO;
-    theme.selectedSegmentIndex = self.themeIndex;
+    theme.selectedSegmentIndex =
+        self.themeIndex;
 
     [theme addTarget:self
               action:@selector(themeChanged:)
@@ -1093,43 +1173,44 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [themeTitle.topAnchor
          constraintEqualToAnchor:themeCard.topAnchor
-         constant:16],
+         constant:16.0],
 
         [themeTitle.leadingAnchor
          constraintEqualToAnchor:themeCard.leadingAnchor
-         constant:16],
+         constant:16.0],
 
         [theme.topAnchor
          constraintEqualToAnchor:themeTitle.bottomAnchor
-         constant:12],
+         constant:12.0],
 
         [theme.leadingAnchor
          constraintEqualToAnchor:themeCard.leadingAnchor
-         constant:16],
+         constant:16.0],
 
         [theme.trailingAnchor
          constraintEqualToAnchor:themeCard.trailingAnchor
-         constant:-16],
+         constant:-16.0],
 
         [theme.bottomAnchor
          constraintEqualToAnchor:themeCard.bottomAnchor
-         constant:-16],
+         constant:-16.0],
 
         [theme.heightAnchor
-         constraintEqualToConstant:36]
+         constraintEqualToConstant:36.0]
     ]];
 
     [self.stackView addArrangedSubview:themeCard];
 
     /*
-     Recording
+     RECORDING
      */
 
-    UIView *recordingCard = [self card];
+    UIView *recordingCard =
+        [self card];
 
     UILabel *recordingLabel =
         [self label:@"Hide recording"
-               size:16
+               size:16.0
              weight:UIFontWeightSemibold];
 
     recordingLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1140,7 +1221,8 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
         [[UISwitch alloc] init];
 
     recordingSwitch.translatesAutoresizingMaskIntoConstraints = NO;
-    recordingSwitch.onTintColor = self.accentColorK1;
+    recordingSwitch.onTintColor =
+        self.accentColorK1;
 
     [recordingSwitch addTarget:self
                         action:@selector(recordingChanged:)
@@ -1151,19 +1233,19 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [recordingLabel.leadingAnchor
          constraintEqualToAnchor:recordingCard.leadingAnchor
-         constant:16],
+         constant:16.0],
 
         [recordingLabel.topAnchor
          constraintEqualToAnchor:recordingCard.topAnchor
-         constant:17],
+         constant:17.0],
 
         [recordingLabel.bottomAnchor
          constraintEqualToAnchor:recordingCard.bottomAnchor
-         constant:-17],
+         constant:-17.0],
 
         [recordingSwitch.trailingAnchor
          constraintEqualToAnchor:recordingCard.trailingAnchor
-         constant:-16],
+         constant:-16.0],
 
         [recordingSwitch.centerYAnchor
          constraintEqualToAnchor:recordingLabel.centerYAnchor]
@@ -1184,23 +1266,30 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
 - (void)themeChanged:(UISegmentedControl *)sender {
 
-    self.themeIndex = sender.selectedSegmentIndex;
+    self.themeIndex =
+        sender.selectedSegmentIndex;
 
     NSString *url =
         self.themeIndex == 0
         ? self.strongestURL
         : self.lazyGeniusURL;
 
-    self.accentColorK1 =
-        self.themeIndex == 0
-        ? [UIColor colorWithRed:0.55
-                          green:0.25
-                           blue:1.0
-                          alpha:1.0]
-        : [UIColor colorWithRed:0.15
-                          green:0.75
-                           blue:0.65
-                          alpha:1.0];
+    if (self.themeIndex == 0) {
+
+        self.accentColorK1 =
+            [UIColor colorWithRed:0.55
+                            green:0.25
+                             blue:1.0
+                            alpha:1.0];
+
+    } else {
+
+        self.accentColorK1 =
+            [UIColor colorWithRed:0.15
+                            green:0.75
+                             blue:0.65
+                            alpha:1.0];
+    }
 
     [self loadImageURL:url
        intoImageView:self.logoView];
@@ -1208,11 +1297,10 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [self loadImageURL:url
        intoImageView:self.miniLogoView];
 
-    self.mainPanel.backgroundColor =
-        self.panelColorK1;
-
-    self.miniPanel.backgroundColor =
-        self.panelColorK1;
+    /*
+     Refresh the current tab so controls
+     use the new accent color.
+     */
 
     [self showSettingsTab];
 }
@@ -1230,16 +1318,17 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     UILabel *heading =
         [self label:@"Credits"
-               size:22
+               size:22.0
              weight:UIFontWeightBold];
 
     [self.stackView addArrangedSubview:heading];
 
-    UIView *card = [self card];
+    UIView *card =
+        [self card];
 
     UILabel *developer =
         [self label:@"Developer"
-               size:13
+               size:13.0
              weight:UIFontWeightMedium];
 
     developer.textColor =
@@ -1249,17 +1338,19 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
     UILabel *name =
         [self label:@"Ales04718"
-               size:19
+               size:19.0
              weight:UIFontWeightBold];
 
     name.translatesAutoresizingMaskIntoConstraints = NO;
 
     UILabel *discord =
         [self label:@"discord.gg/DKdAG9VTjh"
-               size:15
+               size:15.0
              weight:UIFontWeightSemibold];
 
-    discord.textColor = self.accentColorK1;
+    discord.textColor =
+        self.accentColorK1;
+
     discord.translatesAutoresizingMaskIntoConstraints = NO;
     discord.userInteractionEnabled = YES;
 
@@ -1277,29 +1368,29 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     [NSLayoutConstraint activateConstraints:@[
         [developer.topAnchor
          constraintEqualToAnchor:card.topAnchor
-         constant:17],
+         constant:17.0],
 
         [developer.leadingAnchor
          constraintEqualToAnchor:card.leadingAnchor
-         constant:17],
+         constant:17.0],
 
         [name.topAnchor
          constraintEqualToAnchor:developer.bottomAnchor
-         constant:5],
+         constant:5.0],
 
         [name.leadingAnchor
          constraintEqualToAnchor:developer.leadingAnchor],
 
         [discord.topAnchor
          constraintEqualToAnchor:name.bottomAnchor
-         constant:15],
+         constant:15.0],
 
         [discord.leadingAnchor
          constraintEqualToAnchor:developer.leadingAnchor],
 
         [discord.bottomAnchor
          constraintEqualToAnchor:card.bottomAnchor
-         constant:-17]
+         constant:-17.0]
     ]];
 
     [self.stackView addArrangedSubview:card];
@@ -1313,7 +1404,8 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     UILabel *label =
         (UILabel *)gesture.view;
 
-    NSString *oldText = label.text;
+    NSString *oldText =
+        label.text;
 
     label.text = @"Copied!";
 
@@ -1336,7 +1428,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     self.minimized = YES;
 
     [UIView animateWithDuration:0.30
-                          delay:0
+                          delay:0.0
          usingSpringWithDamping:0.82
           initialSpringVelocity:0.2
                         options:UIViewAnimationOptionCurveEaseInOut
@@ -1351,6 +1443,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
                      completion:^(BOOL finished) {
 
         self.mainPanel.hidden = YES;
+
         self.mainPanel.transform =
             CGAffineTransformIdentity;
 
@@ -1363,7 +1456,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
         [self layoutMiniPanel];
 
         [UIView animateWithDuration:0.28
-                              delay:0
+                              delay:0.0
              usingSpringWithDamping:0.75
               initialSpringVelocity:0.3
                             options:UIViewAnimationOptionCurveEaseOut
@@ -1392,7 +1485,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
         CGAffineTransformMakeScale(0.78, 0.78);
 
     [UIView animateWithDuration:0.28
-                          delay:0
+                          delay:0.0
          usingSpringWithDamping:0.78
           initialSpringVelocity:0.25
                         options:UIViewAnimationOptionCurveEaseOut
@@ -1412,6 +1505,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
                      completion:^(BOOL finished) {
 
         self.miniPanel.hidden = YES;
+
         self.miniPanel.transform =
             CGAffineTransformIdentity;
 
@@ -1423,9 +1517,12 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
 - (UIView *)card {
 
-    UIView *view = [[UIView alloc] init];
+    UIView *view =
+        [[UIView alloc] init];
 
-    view.backgroundColor = self.cardColorK1;
+    view.backgroundColor =
+        self.cardColorK1;
+
     view.layer.cornerRadius = 15.0;
     view.layer.borderWidth = 1.0;
 
@@ -1446,7 +1543,8 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
         [[UILabel alloc] init];
 
     label.text = text;
-    label.textColor = self.textColorK1;
+    label.textColor =
+        self.textColorK1;
 
     label.font =
         [UIFont systemFontOfSize:size
@@ -1460,7 +1558,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 - (void)buttonPressAnimation:(UIView *)view {
 
     [UIView animateWithDuration:0.08
-                          delay:0
+                          delay:0.0
                         options:UIViewAnimationOptionCurveEaseOut
                      animations:^{
 
@@ -1471,7 +1569,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
                      completion:^(BOOL finished) {
 
         [UIView animateWithDuration:0.18
-                              delay:0
+                              delay:0.0
              usingSpringWithDamping:0.55
               initialSpringVelocity:0.5
                             options:UIViewAnimationOptionCurveEaseOut
@@ -1490,7 +1588,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 - (void)loadImageURL:(NSString *)url
      intoImageView:(UIImageView *)imageView {
 
-    if (!url || !imageView) {
+    if (url.length == 0 || !imageView) {
         return;
     }
 
@@ -1498,7 +1596,10 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
         [NSURL URLWithString:url];
 
     if (!URL) {
-        NSLog(@"Invalid image URL: %@", url);
+
+        NSLog(@"K1e0n: invalid image URL: %@",
+              url);
+
         return;
     }
 
@@ -1511,7 +1612,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
         if (error) {
 
-            NSLog(@"Image loading error: %@",
+            NSLog(@"K1e0n: image error: %@",
                   error.localizedDescription);
 
             return;
@@ -1519,7 +1620,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
         if (data.length == 0) {
 
-            NSLog(@"Image returned no data");
+            NSLog(@"K1e0n: image returned no data");
 
             return;
         }
@@ -1529,12 +1630,21 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
         if (!image) {
 
-            NSLog(@"Downloaded data was not a valid image");
+            NSLog(@"K1e0n: downloaded data is not an image");
 
             return;
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
+
+            /*
+             Make sure the image view still exists
+             before updating it.
+             */
+
+            if (!imageView) {
+                return;
+            }
 
             imageView.image = image;
             imageView.alpha = 0.0;
