@@ -10,7 +10,7 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
     MinimizePositionBottomRight
 };
 
-@interface StardewMenuViewController : UIViewController <UITextFieldDelegate, UITableViewDelegate, UITableViewDataSource>
+@interface StardewMenuViewController : UIViewController <UITextFieldDelegate>
 
 // UI Main Containers
 @property (nonatomic, strong) UIView *mainContainerView;
@@ -21,19 +21,14 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
 
 // Tab Panels
 @property (nonatomic, strong) UIView *mainTabView;
-@property (nonatomic, strong) UIView *dupeTabView;
 @property (nonatomic, strong) UIView *settingsTabView;
 @property (nonatomic, strong) UIView *creditsTabView;
 
 // Settings State
 @property (nonatomic, assign) MinimizePosition currentMinimizePos;
 
-// Dupe Components & Selection State
-@property (nonatomic, strong) UITableView *dupeTableView;
-@property (nonatomic, assign) BOOL isDupeListExpanded;
-@property (nonatomic, assign) BOOL isParsnipSelected;
-@property (nonatomic, strong) UITextField *dupeTextField;
-@property (nonatomic, strong) UILabel *selectedItemLabel;
+// Money Controls
+@property (nonatomic, strong) UITextField *moneyTextField;
 
 @end
 
@@ -43,8 +38,6 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
     [super viewDidLoad];
     
     self.currentMinimizePos = MinimizePositionTopRight;
-    self.isDupeListExpanded = NO;
-    self.isParsnipSelected = NO;
     
     [self setupMainUI];
     [self setupMinimizedUI];
@@ -52,7 +45,7 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
     [self loadRemoteImages];
 }
 
-#pragma mark - Memory Writing Core
+#pragma mark - Base + Offset Memory Core
 
 - (uintptr_t)getProcessBaseAddress {
     return (uintptr_t)_dyld_get_image_header(0);
@@ -60,19 +53,19 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
 
 - (BOOL)writeMemoryAtOffset:(uintptr_t)offset value:(int)newValue {
     uintptr_t baseAddress = [self getProcessBaseAddress];
-    uintptr_t targetAddress = baseAddress + offset;
+    uintptr_t realAddress = baseAddress + offset; // Real runtime address calculation
     
     kern_return_t kr;
     mach_port_t task = mach_task_self();
     
     // Change memory protection to RWX
-    kr = vm_protect(task, (vm_address_t)targetAddress, sizeof(int), FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+    kr = vm_protect(task, (vm_address_t)realAddress, sizeof(int), FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
     if (kr != KERN_SUCCESS) {
         return NO;
     }
     
-    // Write value to memory offset
-    kr = vm_write(task, (vm_address_t)targetAddress, (vm_offset_t)&newValue, sizeof(int));
+    // Write new value to target address
+    kr = vm_write(task, (vm_address_t)realAddress, (vm_offset_t)&newValue, sizeof(int));
     if (kr != KERN_SUCCESS) {
         return NO;
     }
@@ -139,7 +132,7 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
     sidebar.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.4];
     [self.mainContainerView addSubview:sidebar];
     
-    NSArray *tabs = @[@"Main", @"Dupe", @"Settings", @"Credits"];
+    NSArray *tabs = @[@"Main", @"Settings", @"Credits"];
     for (int i = 0; i < tabs.count; i++) {
         UIButton *tabBtn = [UIButton buttonWithType:UIButtonTypeCustom];
         tabBtn.frame = CGRectMake(8, 15 + (i * 45), 104, 35);
@@ -218,18 +211,15 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
 #pragma mark - Content Navigation
 
 - (void)setupContentTabs {
+    // 1. Main Tab (With Money Option)
     self.mainTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
-    UILabel *mLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 20, 200, 30)];
-    mLabel.text = @"Main Controls";
-    mLabel.textColor = [UIColor whiteColor];
-    [self.mainTabView addSubview:mLabel];
+    [self setupMainTabContent];
     
-    self.dupeTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
-    [self setupDupeTabContent];
-    
+    // 2. Settings Tab
     self.settingsTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
     [self setupSettingsTabContent];
     
+    // 3. Credits Tab
     self.creditsTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
     [self setupCreditsTabContent];
     
@@ -238,73 +228,43 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
 
 - (void)tabTapped:(UIButton *)sender {
     [self.mainTabView removeFromSuperview];
-    [self.dupeTabView removeFromSuperview];
     [self.settingsTabView removeFromSuperview];
     [self.creditsTabView removeFromSuperview];
     
     switch (sender.tag) {
         case 0: [self.contentAreaView addSubview:self.mainTabView]; break;
-        case 1: [self.contentAreaView addSubview:self.dupeTabView]; break;
-        case 2: [self.contentAreaView addSubview:self.settingsTabView]; break;
-        case 3: [self.contentAreaView addSubview:self.creditsTabView]; break;
+        case 1: [self.contentAreaView addSubview:self.settingsTabView]; break;
+        case 2: [self.contentAreaView addSubview:self.creditsTabView]; break;
     }
 }
 
-#pragma mark - Dupe Tab Implementation
+#pragma mark - Main Tab Implementation (Money)
 
-- (void)setupDupeTabContent {
-    UIButton *dropdownBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    dropdownBtn.frame = CGRectMake(20, 20, 220, 40);
-    [dropdownBtn setTitle:@"Item List ▼" forState:UIControlStateNormal];
-    [dropdownBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    dropdownBtn.backgroundColor = [UIColor colorWithWhite:0.15 alpha:0.8];
-    dropdownBtn.layer.cornerRadius = 8;
-    [dropdownBtn addTarget:self action:@selector(toggleDupeList) forControlEvents:UIControlEventTouchUpInside];
-    [self addComeCloserAnimationToButton:dropdownBtn];
-    [self.dupeTabView addSubview:dropdownBtn];
+- (void)setupMainTabContent {
+    UILabel *moneyLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 30, 80, 40)];
+    moneyLabel.text = @"Money:";
+    moneyLabel.textColor = [UIColor whiteColor];
+    moneyLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
+    [self.mainTabView addSubview:moneyLabel];
     
-    self.dupeTableView = [[UITableView alloc] initWithFrame:CGRectMake(20, 65, 220, 0) style:UITableViewStylePlain];
-    self.dupeTableView.delegate = self;
-    self.dupeTableView.dataSource = self;
-    self.dupeTableView.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.9];
-    self.dupeTableView.layer.cornerRadius = 8;
-    self.dupeTableView.clipsToBounds = YES;
-    [self.dupeTabView addSubview:self.dupeTableView];
-    
-    self.selectedItemLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 120, 240, 25)];
-    self.selectedItemLabel.text = @"Selected: None";
-    self.selectedItemLabel.textColor = [UIColor lightGrayColor];
-    self.selectedItemLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-    [self.dupeTabView addSubview:self.selectedItemLabel];
-    
-    CGFloat yPos = self.contentAreaView.bounds.size.height - 70;
-    self.dupeTextField = [[UITextField alloc] initWithFrame:CGRectMake(20, yPos, 140, 40)];
-    self.dupeTextField.placeholder = @"Value...";
-    self.dupeTextField.keyboardType = UIKeyboardTypeNumberPad;
-    self.dupeTextField.backgroundColor = [UIColor colorWithWhite:0.2 alpha:0.8];
-    self.dupeTextField.textColor = [UIColor whiteColor];
-    self.dupeTextField.layer.cornerRadius = 8;
-    self.dupeTextField.returnKeyType = UIReturnKeySend;
-    self.dupeTextField.delegate = self;
-    [self.dupeTabView addSubview:self.dupeTextField];
+    self.moneyTextField = [[UITextField alloc] initWithFrame:CGRectMake(100, 30, 130, 40)];
+    self.moneyTextField.placeholder = @"Amount...";
+    self.moneyTextField.keyboardType = UIKeyboardTypeNumberPad;
+    self.moneyTextField.backgroundColor = [UIColor colorWithWhite:0.2 alpha:0.8];
+    self.moneyTextField.textColor = [UIColor whiteColor];
+    self.moneyTextField.layer.cornerRadius = 8;
+    self.moneyTextField.returnKeyType = UIReturnKeySend;
+    self.moneyTextField.delegate = self;
+    [self.mainTabView addSubview:self.moneyTextField];
     
     UIButton *setBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    setBtn.frame = CGRectMake(170, yPos, 70, 40);
+    setBtn.frame = CGRectMake(240, 30, 70, 40);
     [setBtn setTitle:@"SET" forState:UIControlStateNormal];
     setBtn.backgroundColor = [UIColor colorWithRed:0.65 green:0.40 blue:0.95 alpha:1.0];
     setBtn.layer.cornerRadius = 8;
-    [setBtn addTarget:self action:@selector(handleSetAction:) forControlEvents:UIControlEventTouchUpInside];
+    [setBtn addTarget:self action:@selector(handleMoneySetAction:) forControlEvents:UIControlEventTouchUpInside];
     [self addComeCloserAnimationToButton:setBtn];
-    [self.dupeTabView addSubview:setBtn];
-}
-
-- (void)toggleDupeList {
-    self.isDupeListExpanded = !self.isDupeListExpanded;
-    [UIView animateWithDuration:0.3 animations:^{
-        CGRect frame = self.dupeTableView.frame;
-        frame.size.height = self.isDupeListExpanded ? 50 : 0;
-        self.dupeTableView.frame = frame;
-    }];
+    [self.mainTabView addSubview:setBtn];
 }
 
 #pragma mark - Settings Tab Implementation
@@ -419,76 +379,34 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
     self.mainContainerView.hidden = NO;
 }
 
-#pragma mark - Memory Execution Actions (Triggered ONLY on SET or Send)
+#pragma mark - Money Memory Execution (Base + 0x11025f578)
 
-- (void)executeMemoryModification {
-    if (!self.isParsnipSelected) {
-        self.selectedItemLabel.text = @"Selected: Please select an item!";
-        self.selectedItemLabel.textColor = [UIColor orangeColor];
-        return;
-    }
+- (void)executeMoneyModification {
+    int valueToSet = [self.moneyTextField.text intValue];
     
-    int valueToSet = [self.dupeTextField.text intValue];
-    // Memory modified ONLY here when explicitly tapped
-    BOOL success = [self writeMemoryAtOffset:0x11d833b18 value:valueToSet];
+    // Base + Offset live write
+    BOOL success = [self writeMemoryAtOffset:0x11025f578 value:valueToSet];
     
-    [self triggerCoolVFXOnView:self.dupeTextField];
-    [self.dupeTextField resignFirstResponder];
+    [self triggerCoolVFXOnView:self.moneyTextField];
+    [self.moneyTextField resignFirstResponder];
     
     if (success) {
-        self.dupeTextField.layer.borderColor = [UIColor greenColor].CGColor;
-        self.dupeTextField.layer.borderWidth = 1.5;
+        self.moneyTextField.layer.borderColor = [UIColor greenColor].CGColor;
+        self.moneyTextField.layer.borderWidth = 1.5;
     } else {
-        self.dupeTextField.layer.borderColor = [UIColor redColor].CGColor;
-        self.dupeTextField.layer.borderWidth = 1.5;
+        self.moneyTextField.layer.borderColor = [UIColor redColor].CGColor;
+        self.moneyTextField.layer.borderWidth = 1.5;
     }
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
-    [self executeMemoryModification];
+    [self executeMoneyModification];
     return YES;
 }
 
-- (void)handleSetAction:(UIButton *)sender {
+- (void)handleMoneySetAction:(UIButton *)sender {
     [self triggerCoolVFXOnView:sender];
-    [self executeMemoryModification];
-}
-
-#pragma mark - TableView Delegate (Item Selection - NO MEMORY MODIFICATION HERE)
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return 1;
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"dupeCell"];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"dupeCell"];
-        cell.backgroundColor = [UIColor clearColor];
-        cell.textLabel.textColor = [UIColor whiteColor];
-        cell.textLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-    }
-    cell.textLabel.text = @"Parsnip seed";
-    cell.accessoryType = self.isParsnipSelected ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    
-    // Select item without modifying memory
-    self.isParsnipSelected = !self.isParsnipSelected;
-    [tableView reloadData];
-    
-    if (self.isParsnipSelected) {
-        self.selectedItemLabel.text = @"Selected: Parsnip seed";
-        self.selectedItemLabel.textColor = [UIColor greenColor];
-    } else {
-        self.selectedItemLabel.text = @"Selected: None";
-        self.selectedItemLabel.textColor = [UIColor lightGrayColor];
-    }
-    
-    [self toggleDupeList]; // Close dropdown after selection
+    [self executeMoneyModification];
 }
 
 #pragma mark - Remote Image Downloader
@@ -506,7 +424,7 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
         }
     });
     
-    // 2. Download Strongest Theme Wallpaper
+    // 2. Download Wallpaper
     NSString *bgUrlStr = @"https://6njy7ijupzohhiy4.public.blob.vercel-storage.com/photos/1790528051862-5909xjkh.jpeg";
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
         NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:bgUrlStr]];
@@ -547,3 +465,4 @@ __attribute__((constructor)) static void initializeLiveContainerOverlay(void) {
         }
     });
 }
+
