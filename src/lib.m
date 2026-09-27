@@ -45,41 +45,42 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
     [self loadRemoteImages];
 }
 
-#pragma mark - i8 Memory Core Writing Logic
+#pragma mark - 64-bit Memory Writing Core
 
 - (uintptr_t)getProcessBaseAddress {
     return (uintptr_t)_dyld_get_image_header(0);
 }
 
-- (BOOL)writeI8MemoryAtOffset:(uintptr_t)offset value:(int8_t)newValue {
+- (BOOL)write64BitMemoryAtOffset:(uintptr_t)offset value:(int64_t)newValue {
     uintptr_t baseAddress = [self getProcessBaseAddress];
-    uintptr_t realAddress = baseAddress + offset; // Real runtime address calculation
+    uintptr_t realAddress = baseAddress + offset; // ASLR Slide + Offset
     
     mach_port_t task = mach_task_self();
-    kern_return_t kr;
+    vm_size_t size = sizeof(int64_t); // 8-byte 64-bit integer
     
-    // 1. Unprotect memory page (Allow Read/Write)
-    kr = vm_protect(task, (vm_address_t)realAddress, sizeof(int8_t), FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+    // 1. Temporarily unprotect target page (grant RW permission)
+    kern_return_t kr = vm_protect(task, (vm_address_t)realAddress, size, FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
     if (kr != KERN_SUCCESS) {
-        // Fallback to direct pointer access if Mach task API is restricted
-        @try {
-            int8_t *ptr = (int8_t *)realAddress;
-            *ptr = newValue;
-            return YES;
-        } @catch (NSException *e) {
+        // Retry with full RWX permissions if initial protect fails
+        kr = vm_protect(task, (vm_address_t)realAddress, size, FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE | VM_PROT_COPY);
+        if (kr != KERN_SUCCESS) {
             return NO;
         }
     }
     
-    // 2. Write 1-byte (i8) to target offset
-    kr = vm_write(task, (vm_address_t)realAddress, (vm_offset_t)&newValue, sizeof(int8_t));
+    // 2. Write 64-bit value to real memory address
+    kr = vm_write(task, (vm_address_t)realAddress, (vm_offset_t)&newValue, (mach_msg_type_number_t)size);
     if (kr != KERN_SUCCESS) {
-        // Pointer fallback
-        int8_t *ptr = (int8_t *)realAddress;
-        *ptr = newValue;
+        // Fallback: Direct memory dereference write if page protection succeeded
+        @try {
+            *(volatile int64_t *)realAddress = newValue;
+            kr = KERN_SUCCESS;
+        } @catch (NSException *exception) {
+            return NO;
+        }
     }
     
-    return YES;
+    return (kr == KERN_SUCCESS);
 }
 
 #pragma mark - Main UI Setup
@@ -220,15 +221,12 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
 #pragma mark - Content Navigation
 
 - (void)setupContentTabs {
-    // 1. Main Tab (With Money Option)
     self.mainTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
     [self setupMainTabContent];
     
-    // 2. Settings Tab
     self.settingsTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
     [self setupSettingsTabContent];
     
-    // 3. Credits Tab
     self.creditsTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
     [self setupCreditsTabContent];
     
@@ -257,8 +255,8 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
     [self.mainTabView addSubview:moneyLabel];
     
     self.moneyTextField = [[UITextField alloc] initWithFrame:CGRectMake(100, 30, 130, 40)];
-    self.moneyTextField.placeholder = @"i8 Val (-128..127)";
-    self.moneyTextField.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
+    self.moneyTextField.placeholder = @"Amount...";
+    self.moneyTextField.keyboardType = UIKeyboardTypeNumberPad;
     self.moneyTextField.backgroundColor = [UIColor colorWithWhite:0.2 alpha:0.8];
     self.moneyTextField.textColor = [UIColor whiteColor];
     self.moneyTextField.layer.cornerRadius = 8;
@@ -388,15 +386,13 @@ typedef NS_ENUM(NSInteger, MinimizePosition) {
     self.mainContainerView.hidden = NO;
 }
 
-#pragma mark - Money i8 Memory Execution (Base + 0x11025f578)
+#pragma mark - 64-bit Money Memory Execution (Base + 0x11025f578)
 
 - (void)executeMoneyModification {
-    // Cast user input value to signed 8-bit byte (-128 to 127 or 0 to 255)
-    int rawVal = [self.moneyTextField.text intValue];
-    int8_t i8Value = (int8_t)rawVal;
+    int64_t valueToSet = [self.moneyTextField.text longLongValue]; // Parse 64-bit integer
     
-    // Perform exact i8 memory write at base + 0x11025f578
-    BOOL success = [self writeI8MemoryAtOffset:0x11025f578 value:i8Value];
+    // Execute 64-bit memory write at target offset
+    BOOL success = [self write64BitMemoryAtOffset:0x11025f578 value:valueToSet];
     
     [self triggerCoolVFXOnView:self.moneyTextField];
     [self.moneyTextField resignFirstResponder];
