@@ -85,9 +85,19 @@
     font-size: clamp(2.2rem, 7vw, 3.6rem);
     line-height: 1;
     letter-spacing: -0.055em;
-    font-weight: 750;
-    color: #fff;
+    font-weight: 800;
+    color: transparent;
+    background: linear-gradient(110deg, #ffffff 0%, #9fb6ff 42%, #b98cff 72%, #ffffff 100%);
+    background-size: 180% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
     text-shadow: 0 0 34px rgba(124, 156, 255, 0.16);
+    animation: titleGlow 7s ease-in-out infinite alternate;
+  }
+
+  @keyframes titleGlow {
+    from { background-position: 0% center; }
+    to { background-position: 100% center; }
   }
 
   .subtitle {
@@ -106,6 +116,73 @@
   }
 
   .field { margin-bottom: 18px; }
+
+  .token-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .token-row input { flex: 1; min-width: 0; }
+
+  .save-token-btn {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 0 14px;
+    border-radius: 14px;
+    font-size: 13px;
+    background: rgba(124, 156, 255, 0.14);
+    border: 1px solid rgba(124, 156, 255, 0.24);
+    box-shadow: none;
+    white-space: nowrap;
+  }
+
+  .save-token-btn:hover {
+    background: rgba(124, 156, 255, 0.22);
+    box-shadow: 0 8px 20px rgba(95, 127, 240, 0.12);
+  }
+
+  .token-menu {
+    position: relative;
+    margin-top: 8px;
+    display: none;
+  }
+
+  .token-menu.show { display: block; }
+
+  .saved-token {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .saved-token-name {
+    flex: 1;
+    min-width: 0;
+    color: #cbd1dc;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .token-action {
+    width: auto;
+    padding: 6px 9px;
+    border-radius: 9px;
+    font-size: 11px;
+    background: rgba(255,255,255,0.06);
+    box-shadow: none;
+  }
+
+  .token-action.delete {
+    color: #ff9aa2;
+    background: rgba(255,92,104,0.08);
+  }
 
   label {
     display: block;
@@ -259,7 +336,11 @@
     <div class="panel">
       <div class="field">
         <label for="pat">GitHub token</label>
-        <input type="password" id="pat" placeholder="Paste token" autocomplete="off">
+        <div class="token-row">
+          <input type="password" id="pat" placeholder="Paste token" autocomplete="off">
+          <button type="button" class="save-token-btn" onclick="saveToken()">Save</button>
+        </div>
+        <div id="tokenMenu" class="token-menu"></div>
       </div>
 
       <div class="field">
@@ -293,7 +374,59 @@ void example_function(void) {
 
 <script>
     const OWNER = 'alzscriptz';
+    renderSavedTokens();
     const REPO = 'compiler';
+
+    function getSavedTokens() {
+      try { return JSON.parse(localStorage.getItem('k1ecompile_tokens') || '[]'); }
+      catch { return []; }
+    }
+
+    function saveToken() {
+      const input = document.getElementById('pat');
+      const token = input.value.trim();
+      if (!token) { input.focus(); return; }
+
+      const tokens = getSavedTokens();
+      const existing = tokens.find(t => t.token === token);
+      if (!existing) {
+        const name = prompt('Name this token', 'GitHub token');
+        if (name === null) return;
+        tokens.unshift({ id: crypto.randomUUID(), name: name.trim() || 'GitHub token', token });
+        localStorage.setItem('k1ecompile_tokens', JSON.stringify(tokens));
+      }
+      renderSavedTokens();
+    }
+
+    function selectToken(id) {
+      const token = getSavedTokens().find(t => t.id === id);
+      if (!token) return;
+      document.getElementById('pat').value = token.token;
+      renderSavedTokens();
+    }
+
+    function deleteToken(id) {
+      const tokens = getSavedTokens().filter(t => t.id !== id);
+      localStorage.setItem('k1ecompile_tokens', JSON.stringify(tokens));
+      renderSavedTokens();
+    }
+
+    function renderSavedTokens() {
+      const menu = document.getElementById('tokenMenu');
+      const tokens = getSavedTokens();
+      menu.classList.toggle('show', tokens.length > 0);
+      menu.innerHTML = tokens.map(t => `
+        <div class="saved-token">
+          <span class="saved-token-name">${escapeHtml(t.name)}</span>
+          <button type="button" class="token-action" onclick="selectToken('${t.id}')">Use</button>
+          <button type="button" class="token-action delete" onclick="deleteToken('${t.id}')">Delete</button>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(value) {
+      return value.replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
 
     function log(msg) {
       const el = document.getElementById('log');
