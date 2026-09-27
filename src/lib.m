@@ -1,25 +1,36 @@
 #import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#import <QuartzCore/QuartzCore.h>
 
 #pragma mark - Runtime Dumper
 
 static NSString *DumpAllClasses(void) {
-    NSMutableString *output = [NSMutableString string];
 
-    int classCount = objc_getClassList(NULL, 0);
+    NSMutableString *output =
+        [NSMutableString string];
+
+    int classCount =
+        objc_getClassList(NULL, 0);
 
     if (classCount <= 0) {
         return @"No Objective-C classes found.";
     }
 
     Class *classes =
-        (Class *)malloc(sizeof(Class) * (size_t)classCount);
+        (Class *)malloc(
+            sizeof(Class) * (size_t)classCount
+        );
 
     if (classes == NULL) {
         return @"Failed to allocate class list.";
     }
 
-    int actualCount = objc_getClassList(classes, classCount);
+    int actualCount =
+        objc_getClassList(
+            classes,
+            classCount
+        );
 
     [output appendFormat:
         @"Objective-C Runtime Dumper\n"
@@ -28,42 +39,73 @@ static NSString *DumpAllClasses(void) {
          actualCount];
 
     for (int i = 0; i < actualCount; i++) {
+
         Class cls = classes[i];
 
         if (cls == Nil)
             continue;
 
-        const char *className = class_getName(cls);
+        const char *className =
+            class_getName(cls);
 
         [output appendFormat:
             @"Class: %s\n",
-            className ? className : "<unknown>"];
+            className
+                ? className
+                : "<unknown>"];
 
         unsigned int ivarCount = 0;
-        Ivar *ivars = class_copyIvarList(cls, &ivarCount);
 
-        if (ivars == NULL || ivarCount == 0) {
-            [output appendString:@"  No ivars\n\n"];
+        Ivar *ivars =
+            class_copyIvarList(
+                cls,
+                &ivarCount
+            );
+
+        if (ivars == NULL ||
+            ivarCount == 0) {
+
+            [output appendString:
+                @"  No ivars\n\n"];
+
             free(ivars);
             continue;
         }
 
-        for (unsigned int j = 0; j < ivarCount; j++) {
+        for (unsigned int j = 0;
+             j < ivarCount;
+             j++) {
+
             Ivar ivar = ivars[j];
 
             if (ivar == NULL)
                 continue;
 
-            const char *name = ivar_getName(ivar);
-            const char *type = ivar_getTypeEncoding(ivar);
-            ptrdiff_t offset = ivar_getOffset(ivar);
+            const char *name =
+                ivar_getName(ivar);
+
+            const char *type =
+                ivar_getTypeEncoding(ivar);
+
+            ptrdiff_t offset =
+                ivar_getOffset(ivar);
 
             [output appendFormat:
-                @"  %-40s offset: 0x%zx (%td)  type: %s\n",
-                name ? name : "<unnamed>",
+                @"  %-40s "
+                 @"offset: 0x%zx (%td) "
+                 @"type: %s\n",
+
+                name
+                    ? name
+                    : "<unnamed>",
+
                 (size_t)offset,
+
                 offset,
-                type ? type : "<unknown>"];
+
+                type
+                    ? type
+                    : "<unknown>"];
         }
 
         [output appendString:@"\n"];
@@ -80,25 +122,39 @@ static NSString *DumpAllClasses(void) {
 
 @interface OffsetDumperView : UIView
 
-@property(nonatomic, strong) UITextView *textView;
-@property(nonatomic, strong) UIButton *dumpButton;
-@property(nonatomic, strong) UIButton *copyButton;
-@property(nonatomic, strong) UIButton *minimizeButton;
+@property(nonatomic, strong)
+    UITextView *textView;
 
-@property(nonatomic, assign) BOOL minimized;
+@property(nonatomic, strong)
+    UIButton *dumpButton;
+
+@property(nonatomic, strong)
+    UIButton *clipboardButton;
+
+@property(nonatomic, strong)
+    UIButton *minimizeButton;
+
+@property(nonatomic, assign)
+    BOOL minimized;
 
 @end
 
 @implementation OffsetDumperView
 
+#pragma mark - Init
+
 - (instancetype)initWithFrame:(CGRect)frame {
+
     self = [super initWithFrame:frame];
 
     if (self) {
+
         self.backgroundColor =
-            [[UIColor blackColor] colorWithAlphaComponent:0.92];
+            [[UIColor blackColor]
+                colorWithAlphaComponent:0.94];
 
         self.layer.cornerRadius = 12.0;
+
         self.clipsToBounds = YES;
 
         [self setupUI];
@@ -107,291 +163,458 @@ static NSString *DumpAllClasses(void) {
     return self;
 }
 
-#pragma mark - UI Setup
+#pragma mark - Setup UI
 
 - (void)setupUI {
 
-    // Title
-    UILabel *title = [[UILabel alloc]
-        initWithFrame:CGRectZero];
+    /*
+     * Title
+     */
 
-    title.text = @"Offset Dumper";
-    title.textColor = UIColor.whiteColor;
+    UILabel *title =
+        [[UILabel alloc]
+            initWithFrame:CGRectZero];
+
+    title.text =
+        @"Offset Dumper";
+
+    title.textColor =
+        UIColor.whiteColor;
+
     title.font =
         [UIFont boldSystemFontOfSize:17.0];
 
-    title.translatesAutoresizingMaskIntoConstraints = NO;
+    title.translatesAutoresizingMaskIntoConstraints =
+        NO;
 
     [self addSubview:title];
 
-    // Dump button
+    /*
+     * Dump Button
+     */
+
     self.dumpButton =
-        [UIButton buttonWithType:UIButtonTypeSystem];
+        [UIButton buttonWithType:
+            UIButtonTypeSystem];
 
-    [self.dumpButton setTitle:@"Dump"
-                     forState:UIControlStateNormal];
+    [self.dumpButton
+        setTitle:@"Dump"
+        forState:UIControlStateNormal];
 
-    [self.dumpButton setTitleColor:UIColor.whiteColor
-                          forState:UIControlStateNormal];
+    [self.dumpButton
+        setTitleColor:UIColor.whiteColor
+        forState:UIControlStateNormal];
 
     self.dumpButton.backgroundColor =
         [UIColor systemBlueColor];
 
-    self.dumpButton.layer.cornerRadius = 7.0;
+    self.dumpButton.layer.cornerRadius =
+        7.0;
 
-    [self.dumpButton addTarget:self
-                        action:@selector(dumpPressed)
-              forControlEvents:UIControlEventTouchUpInside];
+    [self.dumpButton
+        addTarget:self
+        action:@selector(dumpPressed)
+        forControlEvents:
+            UIControlEventTouchUpInside];
 
-    self.dumpButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.dumpButton.translatesAutoresizingMaskIntoConstraints =
+        NO;
 
     [self addSubview:self.dumpButton];
 
-    // Copy button
-    self.copyButton =
-        [UIButton buttonWithType:UIButtonTypeSystem];
+    /*
+     * Clipboard Button
+     */
 
-    [self.copyButton setTitle:@"Copy"
-                     forState:UIControlStateNormal];
+    self.clipboardButton =
+        [UIButton buttonWithType:
+            UIButtonTypeSystem];
 
-    [self.copyButton setTitleColor:UIColor.whiteColor
-                          forState:UIControlStateNormal];
+    [self.clipboardButton
+        setTitle:@"Copy"
+        forState:UIControlStateNormal];
 
-    self.copyButton.backgroundColor =
+    [self.clipboardButton
+        setTitleColor:UIColor.whiteColor
+        forState:UIControlStateNormal];
+
+    self.clipboardButton.backgroundColor =
         [UIColor systemGreenColor];
 
-    self.copyButton.layer.cornerRadius = 7.0;
+    self.clipboardButton.layer.cornerRadius =
+        7.0;
 
-    [self.copyButton addTarget:self
-                        action:@selector(copyPressed)
-              forControlEvents:UIControlEventTouchUpInside];
+    [self.clipboardButton
+        addTarget:self
+        action:@selector(copyPressed)
+        forControlEvents:
+            UIControlEventTouchUpInside];
 
-    self.copyButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.clipboardButton.translatesAutoresizingMaskIntoConstraints =
+        NO;
 
-    [self addSubview:self.copyButton];
+    [self addSubview:self.clipboardButton];
 
-    // Minimize button
+    /*
+     * Minimize Button
+     */
+
     self.minimizeButton =
-        [UIButton buttonWithType:UIButtonTypeSystem];
+        [UIButton buttonWithType:
+            UIButtonTypeSystem];
 
-    [self.minimizeButton setTitle:@"−"
-                         forState:UIControlStateNormal];
+    [self.minimizeButton
+        setTitle:@"−"
+        forState:UIControlStateNormal];
 
-    [self.minimizeButton setTitleColor:UIColor.whiteColor
-                              forState:UIControlStateNormal];
+    [self.minimizeButton
+        setTitleColor:UIColor.whiteColor
+        forState:UIControlStateNormal];
 
     self.minimizeButton.titleLabel.font =
         [UIFont boldSystemFontOfSize:20.0];
 
-    [self.minimizeButton addTarget:self
-                            action:@selector(minimizePressed)
-                  forControlEvents:UIControlEventTouchUpInside];
+    [self.minimizeButton
+        addTarget:self
+        action:@selector(minimizePressed)
+        forControlEvents:
+            UIControlEventTouchUpInside];
 
-    self.minimizeButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.minimizeButton.translatesAutoresizingMaskIntoConstraints =
+        NO;
 
     [self addSubview:self.minimizeButton];
 
-    // Output
+    /*
+     * Text View
+     */
+
     self.textView =
-        [[UITextView alloc] initWithFrame:CGRectZero];
+        [[UITextView alloc]
+            initWithFrame:CGRectZero];
 
     self.textView.backgroundColor =
-        [UIColor colorWithWhite:0.05 alpha:1.0];
+        [UIColor colorWithWhite:0.05
+                         alpha:1.0];
 
     self.textView.textColor =
-        [UIColor colorWithWhite:0.9 alpha:1.0];
+        [UIColor colorWithWhite:0.9
+                         alpha:1.0];
 
     self.textView.font =
-        [UIFont monospacedSystemFontOfSize:11.0
-                                    weight:UIFontWeightRegular];
+        [UIFont monospacedSystemFontOfSize:
+            11.0
+            weight:UIFontWeightRegular];
 
-    self.textView.editable = NO;
-    self.textView.selectable = YES;
+    self.textView.editable =
+        NO;
 
-    self.textView.layer.cornerRadius = 7.0;
+    self.textView.selectable =
+        YES;
 
-    self.textView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.textView.layer.cornerRadius =
+        7.0;
+
+    self.textView.translatesAutoresizingMaskIntoConstraints =
+        NO;
 
     [self addSubview:self.textView];
 
-    // Layout
-    [NSLayoutConstraint activateConstraints:@[
-        [title.topAnchor constraintEqualToAnchor:self.topAnchor
-                                        constant:10],
+    self.textView.text =
+        @"Press Dump to enumerate "
+         @"Objective-C ivars.";
 
-        [title.leadingAnchor constraintEqualToAnchor:self.leadingAnchor
-                                            constant:12],
+    /*
+     * Constraints
+     */
+
+    [NSLayoutConstraint activateConstraints:@[
+
+        /*
+         * Title
+         */
+
+        [title.topAnchor
+            constraintEqualToAnchor:
+                self.topAnchor
+            constant:10.0],
+
+        [title.leadingAnchor
+            constraintEqualToAnchor:
+                self.leadingAnchor
+            constant:12.0],
+
+        /*
+         * Minimize
+         */
 
         [self.minimizeButton.topAnchor
-            constraintEqualToAnchor:self.topAnchor
-                           constant:5],
+            constraintEqualToAnchor:
+                self.topAnchor
+            constant:5.0],
 
         [self.minimizeButton.trailingAnchor
-            constraintEqualToAnchor:self.trailingAnchor
-                           constant:-5],
+            constraintEqualToAnchor:
+                self.trailingAnchor
+            constant:-5.0],
 
         [self.minimizeButton.widthAnchor
-            constraintEqualToConstant:35],
+            constraintEqualToConstant:35.0],
 
         [self.minimizeButton.heightAnchor
-            constraintEqualToConstant:35],
+            constraintEqualToConstant:35.0],
+
+        /*
+         * Dump
+         */
 
         [self.dumpButton.topAnchor
-            constraintEqualToAnchor:title.bottomAnchor
-                           constant:8],
+            constraintEqualToAnchor:
+                title.bottomAnchor
+            constant:8.0],
 
         [self.dumpButton.leadingAnchor
-            constraintEqualToAnchor:self.leadingAnchor
-                           constant:10],
+            constraintEqualToAnchor:
+                self.leadingAnchor
+            constant:10.0],
 
         [self.dumpButton.widthAnchor
-            constraintEqualToConstant:75],
+            constraintEqualToConstant:75.0],
 
         [self.dumpButton.heightAnchor
-            constraintEqualToConstant:32],
+            constraintEqualToConstant:32.0],
 
-        [self.copyButton.topAnchor
-            constraintEqualToAnchor:title.bottomAnchor
-                           constant:8],
+        /*
+         * Copy
+         */
 
-        [self.copyButton.leadingAnchor
-            constraintEqualToAnchor:self.dumpButton.trailingAnchor
-                           constant:8],
+        [self.clipboardButton.topAnchor
+            constraintEqualToAnchor:
+                title.bottomAnchor
+            constant:8.0],
 
-        [self.copyButton.widthAnchor
-            constraintEqualToConstant:75],
+        [self.clipboardButton.leadingAnchor
+            constraintEqualToAnchor:
+                self.dumpButton.trailingAnchor
+            constant:8.0],
 
-        [self.copyButton.heightAnchor
-            constraintEqualToConstant:32],
+        [self.clipboardButton.widthAnchor
+            constraintEqualToConstant:75.0],
+
+        [self.clipboardButton.heightAnchor
+            constraintEqualToConstant:32.0],
+
+        /*
+         * Text View
+         */
 
         [self.textView.topAnchor
-            constraintEqualToAnchor:self.dumpButton.bottomAnchor
-                           constant:8],
+            constraintEqualToAnchor:
+                self.dumpButton.bottomAnchor
+            constant:8.0],
 
         [self.textView.leadingAnchor
-            constraintEqualToAnchor:self.leadingAnchor
-                           constant:10],
+            constraintEqualToAnchor:
+                self.leadingAnchor
+            constant:10.0],
 
         [self.textView.trailingAnchor
-            constraintEqualToAnchor:self.trailingAnchor
-                           constant:-10],
+            constraintEqualToAnchor:
+                self.trailingAnchor
+            constant:-10.0],
 
         [self.textView.bottomAnchor
-            constraintEqualToAnchor:self.bottomAnchor
-                           constant:-10]
+            constraintEqualToAnchor:
+                self.bottomAnchor
+            constant:-10.0]
     ]];
-
-    self.textView.text =
-        @"Press Dump to enumerate Objective-C ivars.";
 }
 
-#pragma mark - Buttons
+#pragma mark - Dump
 
 - (void)dumpPressed {
 
+    self.dumpButton.enabled = NO;
+
+    [self.dumpButton
+        setTitle:@"Dumping..."
+        forState:UIControlStateNormal];
+
     dispatch_async(
         dispatch_get_global_queue(
-            QOS_CLASS_USER_INITIATED, 0),
+            QOS_CLASS_USER_INITIATED,
+            0
+        ),
         ^{
 
-        NSString *result = DumpAllClasses();
+        NSString *result =
+            DumpAllClasses();
 
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.textView.text = result;
+        dispatch_async(
+            dispatch_get_main_queue(),
+            ^{
+
+            self.textView.text =
+                result;
+
             self.textView.contentOffset =
                 CGPointZero;
+
+            self.dumpButton.enabled =
+                YES;
+
+            [self.dumpButton
+                setTitle:@"Dump"
+                forState:
+                    UIControlStateNormal];
         });
     });
 }
 
+#pragma mark - Copy
+
 - (void)copyPressed {
 
-    NSString *text = self.textView.text ?: @"";
+    NSString *text =
+        self.textView.text;
 
     if (text.length == 0)
         return;
 
-    UIPasteboard.generalPasteboard.string = text;
+    UIPasteboard.generalPasteboard.string =
+        text;
 
-    [self.copyButton setTitle:@"Copied!"
-                     forState:UIControlStateNormal];
+    [self.clipboardButton
+        setTitle:@"Copied!"
+        forState:UIControlStateNormal];
 
     dispatch_after(
         dispatch_time(
             DISPATCH_TIME_NOW,
-            (int64_t)(1.0 * NSEC_PER_SEC)),
+            (int64_t)
+                (1.0 *
+                 NSEC_PER_SEC)
+        ),
         dispatch_get_main_queue(),
         ^{
 
-        [self.copyButton setTitle:@"Copy"
-                         forState:UIControlStateNormal];
+        [self.clipboardButton
+            setTitle:@"Copy"
+            forState:UIControlStateNormal];
     });
 }
 
+#pragma mark - Minimize
+
 - (void)minimizePressed {
 
-    self.minimized = !self.minimized;
+    self.minimized =
+        !self.minimized;
 
-    [UIView animateWithDuration:0.2 animations:^{
+    if (self.minimized) {
 
-        if (self.minimized) {
+        self.textView.hidden =
+            YES;
 
-            self.textView.hidden = YES;
-            self.dumpButton.hidden = YES;
-            self.copyButton.hidden = YES;
+        self.dumpButton.hidden =
+            YES;
 
-            CGRect frame = self.frame;
-            frame.size.height = 50.0;
-            self.frame = frame;
+        self.clipboardButton.hidden =
+            YES;
 
-            [self.minimizeButton setTitle:@"+"
-                                 forState:UIControlStateNormal];
+        [self.minimizeButton
+            setTitle:@"+"
+            forState:UIControlStateNormal];
 
-        } else {
+        [UIView animateWithDuration:
+            0.2
+            animations:^{
 
-            self.textView.hidden = NO;
-            self.dumpButton.hidden = NO;
-            self.copyButton.hidden = NO;
+            CGRect frame =
+                self.frame;
 
-            CGRect frame = self.frame;
-            frame.size.height = 500.0;
-            self.frame = frame;
+            frame.size.height =
+                50.0;
 
-            [self.minimizeButton setTitle:@"−"
-                                 forState:UIControlStateNormal];
-        }
-    }];
+            self.frame =
+                frame;
+        }];
+
+    } else {
+
+        self.textView.hidden =
+            NO;
+
+        self.dumpButton.hidden =
+            NO;
+
+        self.clipboardButton.hidden =
+            NO;
+
+        [self.minimizeButton
+            setTitle:@"−"
+            forState:UIControlStateNormal];
+
+        [UIView animateWithDuration:
+            0.2
+            animations:^{
+
+            CGRect frame =
+                self.frame;
+
+            frame.size.height =
+                500.0;
+
+            self.frame =
+                frame;
+        }];
+    }
 }
 
 @end
 
-#pragma mark - Example Presentation
+#pragma mark - Show Dumper
 
 static void ShowOffsetDumper(void) {
 
-    dispatch_async(dispatch_get_main_queue(), ^{
+    dispatch_async(
+        dispatch_get_main_queue(),
+        ^{
 
-        UIWindow *window = nil;
+        UIWindow *window =
+            nil;
+
+        /*
+         * Find active window
+         */
 
         for (UIScene *scene in
-             UIApplication.sharedApplication.connectedScenes) {
+             UIApplication.sharedApplication
+                 .connectedScenes) {
 
             if (scene.activationState !=
-                UISceneActivationStateForegroundActive)
+                UISceneActivationStateForegroundActive) {
+
                 continue;
+            }
 
             if (![scene isKindOfClass:
-                  [UIWindowScene class]])
+                  [UIWindowScene class]]) {
+
                 continue;
+            }
 
             UIWindowScene *windowScene =
                 (UIWindowScene *)scene;
 
-            for (UIWindow *candidate
-                 in windowScene.windows) {
+            for (UIWindow *candidate in
+                 windowScene.windows) {
 
                 if (candidate.isKeyWindow) {
-                    window = candidate;
+
+                    window =
+                        candidate;
+
                     break;
                 }
             }
@@ -400,16 +623,68 @@ static void ShowOffsetDumper(void) {
                 break;
         }
 
+        /*
+         * Fallback
+         */
+
+        if (!window) {
+
+            for (UIScene *scene in
+                 UIApplication.sharedApplication
+                     .connectedScenes) {
+
+                if (![scene isKindOfClass:
+                      [UIWindowScene class]]) {
+
+                    continue;
+                }
+
+                UIWindowScene *windowScene =
+                    (UIWindowScene *)scene;
+
+                if (windowScene.windows.count > 0) {
+
+                    window =
+                        windowScene.windows.firstObject;
+
+                    break;
+                }
+            }
+        }
+
         if (!window)
             return;
 
+        /*
+         * Prevent duplicate UI
+         */
+
+        for (UIView *view in
+             window.subviews) {
+
+            if ([view isKindOfClass:
+                  [OffsetDumperView class]]) {
+
+                return;
+            }
+        }
+
+        /*
+         * Create UI
+         */
+
+        CGFloat width =
+            window.bounds.size.width - 40.0;
+
         OffsetDumperView *dumper =
             [[OffsetDumperView alloc]
-                initWithFrame:CGRectMake(
-                    20,
-                    80,
-                    window.bounds.size.width - 40,
-                    500)];
+                initWithFrame:
+                    CGRectMake(
+                        20.0,
+                        80.0,
+                        width,
+                        500.0
+                    )];
 
         dumper.autoresizingMask =
             UIViewAutoresizingFlexibleWidth |
@@ -419,19 +694,29 @@ static void ShowOffsetDumper(void) {
     });
 }
 
+#pragma mark - Constructor
+
 __attribute__((constructor))
 static void OffsetDumperInit(void) {
 
     @autoreleasepool {
 
-        // Delay UI creation until UIKit has a window.
+        /*
+         * Wait for UIKit to finish
+         * creating the application window.
+         */
+
         dispatch_after(
             dispatch_time(
                 DISPATCH_TIME_NOW,
-                (int64_t)(1.5 * NSEC_PER_SEC)),
+                (int64_t)
+                    (1.5 *
+                     NSEC_PER_SEC)
+            ),
             dispatch_get_main_queue(),
             ^{
-                ShowOffsetDumper();
-            });
+
+            ShowOffsetDumper();
+        });
     }
 }
