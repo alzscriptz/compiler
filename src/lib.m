@@ -2,43 +2,83 @@
 #import <objc/runtime.h>
 
 static void DumpClass(Class cls) {
-    printf("\n[%s]\n", class_getName(cls));
+    if (cls == Nil) {
+        return;
+    }
 
-    unsigned int count = 0;
-    Ivar *ivars = class_copyIvarList(cls, &count);
+    const char *className = class_getName(cls);
 
-    for (unsigned int i = 0; i < count; i++) {
+    printf("\n========================================\n");
+    printf("Class: %s\n", className ? className : "<unknown>");
+    printf("========================================\n");
+
+    unsigned int ivarCount = 0;
+    Ivar *ivars = class_copyIvarList(cls, &ivarCount);
+
+    if (ivars == NULL || ivarCount == 0) {
+        printf("  No ivars\n");
+        free(ivars);
+        return;
+    }
+
+    for (unsigned int i = 0; i < ivarCount; i++) {
         Ivar ivar = ivars[i];
 
-        printf("  %-40s  +0x%zx  %s\n",
-               ivar_getName(ivar),
-               (size_t)ivar_getOffset(ivar),
-               ivar_getTypeEncoding(ivar));
+        if (ivar == NULL) {
+            continue;
+        }
+
+        const char *name = ivar_getName(ivar);
+        const char *type = ivar_getTypeEncoding(ivar);
+        ptrdiff_t offset = ivar_getOffset(ivar);
+
+        printf("  %-40s offset: 0x%zx (%td)  type: %s\n",
+               name ? name : "<unnamed>",
+               (size_t)offset,
+               offset,
+               type ? type : "<unknown>");
     }
 
     free(ivars);
 }
 
 static void DumpAllClasses(void) {
-    int count = objc_getClassList(NULL, 0);
+    int classCount = objc_getClassList(NULL, 0);
 
-    if (count <= 0)
+    if (classCount <= 0) {
+        printf("No Objective-C classes found.\n");
         return;
+    }
 
-    Class *classes = malloc(sizeof(Class) * count);
-    count = objc_getClassList(classes, count);
+    /*
+     * ARC requires an explicit cast because malloc()
+     * returns void *.
+     */
+    Class *classes =
+        (Class *)malloc(sizeof(Class) * (size_t)classCount);
 
-    for (int i = 0; i < count; i++) {
+    if (classes == NULL) {
+        printf("Failed to allocate class list.\n");
+        return;
+    }
+
+    int actualCount = objc_getClassList(classes, classCount);
+
+    printf("========================================\n");
+    printf("Objective-C Runtime Dumper\n");
+    printf("Classes found: %d\n", actualCount);
+    printf("========================================\n");
+
+    for (int i = 0; i < actualCount; i++) {
         DumpClass(classes[i]);
     }
 
     free(classes);
 }
 
-int main(int argc, char *argv[]) {
+__attribute__((constructor))
+static void RuntimeDumperInit(void) {
     @autoreleasepool {
         DumpAllClasses();
     }
-
-    return 0;
 }
