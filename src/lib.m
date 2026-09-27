@@ -1,1662 +1,487 @@
 #import <UIKit/UIKit.h>
-#import <QuartzCore/QuartzCore.h>
 
-@interface K1e0nViewController : UIViewController
-@end
-
-typedef NS_ENUM(NSInteger, K1MinimizePosition) {
-    K1MinimizeTopLeft = 0,
-    K1MinimizeTopRight,
-    K1MinimizeBottomLeft,
-    K1MinimizeBottomRight
+typedef NS_ENUM(NSInteger, MinimizePosition) {
+    MinimizePositionTopLeft,
+    MinimizePositionTopRight,
+    MinimizePositionBottomLeft,
+    MinimizePositionBottomRight
 };
 
-@interface K1e0nViewController () <UITextFieldDelegate>
+typedef NS_ENUM(NSInteger, UITheme) {
+    UIThemeStrongests,
+    UIThemeLazyGenius
+};
 
-@property (nonatomic, strong) UIView *mainPanel;
-@property (nonatomic, strong) UIView *miniPanel;
+@interface StardewMenuViewController : UIViewController <UITextFieldDelegate, UITableViewDelegate, UITableViewDataSource>
 
-@property (nonatomic, strong) UIImageView *logoView;
-@property (nonatomic, strong) UIImageView *miniLogoView;
+// UI Main Containers
+@property (nonatomic, strong) UIView *mainContainerView;
+@property (nonatomic, strong) UIView *minimizedView;
+@property (nonatomic, strong) UIView *contentAreaView;
+@property (nonatomic, strong) UIImageView *headerIconImageView;
 
-@property (nonatomic, strong) UILabel *titleLabel;
-@property (nonatomic, strong) UILabel *miniTitleLabel;
+// Tab Panels
+@property (nonatomic, strong) UIView *mainTabView;
+@property (nonatomic, strong) UIView *dupeTabView;
+@property (nonatomic, strong) UIView *settingsTabView;
+@property (nonatomic, strong) UIView *creditsTabView;
 
-@property (nonatomic, strong) UIScrollView *scrollView;
-@property (nonatomic, strong) UIView *contentView;
-@property (nonatomic, strong) UIStackView *stackView;
+// Dynamic Theme Colors
+@property (nonatomic, strong) UIColor *accentColor;
+@property (nonatomic, strong) UIColor *backgroundColor;
+@property (nonatomic, strong) UIColor *panelColor;
+@property (nonatomic, strong) UIColor *textColor;
 
-@property (nonatomic, strong) NSArray<UIButton *> *tabButtons;
+// Settings State
+@property (nonatomic, assign) MinimizePosition currentMinimizePos;
+@property (nonatomic, assign) UITheme currentTheme;
 
-@property (nonatomic, assign) BOOL minimized;
-@property (nonatomic, assign) K1MinimizePosition minimizePosition;
-@property (nonatomic, assign) NSInteger themeIndex;
-
-@property (nonatomic, strong) UIColor *backgroundColorK1;
-@property (nonatomic, strong) UIColor *panelColorK1;
-@property (nonatomic, strong) UIColor *cardColorK1;
-@property (nonatomic, strong) UIColor *accentColorK1;
-@property (nonatomic, strong) UIColor *textColorK1;
-@property (nonatomic, strong) UIColor *secondaryTextColorK1;
+// Dupe Components
+@property (nonatomic, strong) UITableView *dupeTableView;
+@property (nonatomic, assign) BOOL isDupeListExpanded;
+@property (nonatomic, strong) UITextField *dupeTextField;
 
 @end
 
-@implementation K1e0nViewController
-
-#pragma mark - URLs
-
-- (NSString *)logoURL {
-    return @"https://s142.convertio.me/p/m8eu8iTaugBcalmDfo5PiQ/7e7639715e33888f881fe89e1d094700/IMG_0713.png";
-}
-
-- (NSString *)strongestURL {
-    return @"https://s142.convertio.me/p/urkH2ptPuH_rcb2qlMnk9A/7e7639715e33888f881fe89e1d094700/IMG_0737.png";
-}
-
-- (NSString *)lazyGeniusURL {
-    return @"https://s141.convertio.me/p/Fru0NesntE1_Vn3ymUpKIg/7e7639715e33888f881fe89e1d094700/IMG_0780.png";
-}
-
-#pragma mark - Lifecycle
+@implementation StardewMenuViewController
 
 - (void)viewDidLoad {
-    [super viewDidLoad];
-
-    NSLog(@"K1e0nViewController: viewDidLoad");
-
-    self.view.backgroundColor =
-        [UIColor colorWithRed:0.025
-                        green:0.025
-                         blue:0.035
-                        alpha:1.0];
-
-    self.minimized = NO;
-    self.minimizePosition = K1MinimizeTopRight;
-    self.themeIndex = 0;
-
-    [self setupColors];
-    [self buildUI];
-
-    [self loadImageURL:self.logoURL
-       intoImageView:self.logoView];
-
-    [self loadImageURL:self.logoURL
-       intoImageView:self.miniLogoView];
-
-    [self showMainTab];
+    [super meViewDidLoad];
+    
+    self.currentMinimizePos = MinimizePositionTopRight;
+    self.currentTheme = UIThemeStrongests;
+    self.isDupeListExpanded = NO;
+    
+    [self setupThemeColors];
+    [self setupMainUI];
+    [self setupMinimizedUI];
+    [self setupContentTabs];
+    [self loadIconImage];
 }
 
-- (void)viewDidLayoutSubviews {
-    [super viewDidLayoutSubviews];
+#pragma mark - Theme Configuration
 
-    if (self.minimized) {
-        [self layoutMiniPanel];
+- (void)setupThemeColors {
+    if (self.currentTheme == UIThemeStrongests) {
+        // Dark metallic purple/blue aesthetic
+        self.backgroundColor = [UIColor colorWithRed:0.08 green:0.09 blue:0.14 alpha:0.95];
+        self.panelColor = [UIColor colorWithRed:0.12 green:0.14 blue:0.22 alpha:0.90];
+        self.accentColor = [UIColor colorWithRed:0.55 green:0.35 blue:0.95 alpha:1.0];
+        self.textColor = [UIColor whiteColor];
+    } else {
+        // Lazy Genius - Warm neon gold/amber aesthetic
+        self.backgroundColor = [UIColor colorWithRed:0.12 green:0.10 blue:0.08 alpha:0.95];
+        self.panelColor = [UIColor colorWithRed:0.18 green:0.15 blue:0.12 alpha:0.90];
+        self.accentColor = [UIColor colorWithRed:1.00 green:0.65 blue:0.15 alpha:1.0];
+        self.textColor = [UIColor whiteColor];
     }
+    
+    [self applyThemeUpdates];
 }
 
-#pragma mark - Colors
-
-- (void)setupColors {
-
-    self.backgroundColorK1 =
-        [UIColor colorWithRed:0.025
-                        green:0.025
-                         blue:0.035
-                        alpha:1.0];
-
-    self.panelColorK1 =
-        [UIColor colorWithRed:0.065
-                        green:0.065
-                         blue:0.085
-                        alpha:1.0];
-
-    self.cardColorK1 =
-        [UIColor colorWithRed:0.095
-                        green:0.095
-                         blue:0.120
-                        alpha:1.0];
-
-    self.accentColorK1 =
-        [UIColor colorWithRed:0.55
-                        green:0.25
-                         blue:1.0
-                        alpha:1.0];
-
-    self.textColorK1 =
-        [UIColor whiteColor];
-
-    self.secondaryTextColorK1 =
-        [UIColor colorWithWhite:0.62
-                          alpha:1.0];
+- (void)applyThemeUpdates {
+    self.mainContainerView.backgroundColor = self.backgroundColor;
+    self.mainContainerView.layer.borderColor = self.accentColor.CGColor;
+    self.minimizedView.backgroundColor = self.backgroundColor;
+    self.minimizedView.layer.borderColor = self.accentColor.CGColor;
 }
 
-#pragma mark - Build UI
+#pragma mark - Main UI Setup
 
-- (void)buildUI {
-
-    /*
-     MAIN PANEL
-     */
-
-    self.mainPanel = [[UIView alloc] init];
-    self.mainPanel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.mainPanel.backgroundColor = self.panelColorK1;
-    self.mainPanel.layer.cornerRadius = 22.0;
-    self.mainPanel.clipsToBounds = YES;
-
-    [self.view addSubview:self.mainPanel];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.mainPanel.centerXAnchor
-         constraintEqualToAnchor:self.view.centerXAnchor],
-
-        [self.mainPanel.centerYAnchor
-         constraintEqualToAnchor:self.view.centerYAnchor],
-
-        [self.mainPanel.widthAnchor
-         constraintEqualToAnchor:self.view.widthAnchor
-         multiplier:0.80],
-
-        [self.mainPanel.heightAnchor
-         constraintEqualToAnchor:self.view.heightAnchor
-         multiplier:0.80]
-    ]];
-
-    /*
-     HEADER
-     */
-
-    UIView *header = [[UIView alloc] init];
-    header.translatesAutoresizingMaskIntoConstraints = NO;
-    header.backgroundColor =
-        [UIColor colorWithWhite:1.0
-                          alpha:0.025];
-
-    [self.mainPanel addSubview:header];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [header.topAnchor
-         constraintEqualToAnchor:self.mainPanel.topAnchor],
-
-        [header.leadingAnchor
-         constraintEqualToAnchor:self.mainPanel.leadingAnchor],
-
-        [header.trailingAnchor
-         constraintEqualToAnchor:self.mainPanel.trailingAnchor],
-
-        [header.heightAnchor
-         constraintEqualToConstant:65.0]
-    ]];
-
-    /*
-     LOGO
-     */
-
-    self.logoView = [[UIImageView alloc] init];
-    self.logoView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.logoView.contentMode = UIViewContentModeScaleAspectFill;
-    self.logoView.clipsToBounds = YES;
-    self.logoView.layer.cornerRadius = 12.0;
-    self.logoView.backgroundColor =
-        [UIColor colorWithWhite:1.0
-                          alpha:0.05];
-
-    [header addSubview:self.logoView];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.logoView.leadingAnchor
-         constraintEqualToAnchor:header.leadingAnchor
-         constant:15.0],
-
-        [self.logoView.centerYAnchor
-         constraintEqualToAnchor:header.centerYAnchor],
-
-        [self.logoView.widthAnchor
-         constraintEqualToConstant:42.0],
-
-        [self.logoView.heightAnchor
-         constraintEqualToConstant:42.0]
-    ]];
-
-    /*
-     TITLE
-     */
-
-    self.titleLabel = [[UILabel alloc] init];
-    self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.titleLabel.text = @"K1e0n | stardew";
-    self.titleLabel.textColor = self.textColorK1;
-    self.titleLabel.font =
-        [UIFont boldSystemFontOfSize:19.0];
-
-    [header addSubview:self.titleLabel];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.titleLabel.leadingAnchor
-         constraintEqualToAnchor:self.logoView.trailingAnchor
-         constant:11.0],
-
-        [self.titleLabel.centerYAnchor
-         constraintEqualToAnchor:header.centerYAnchor],
-
-        [self.titleLabel.trailingAnchor
-         constraintLessThanOrEqualToAnchor:header.trailingAnchor
-         constant:-60.0]
-    ]];
-
-    /*
-     MINIMIZE BUTTON
-     */
-
-    UIButton *minimize =
-        [UIButton buttonWithType:UIButtonTypeSystem];
-
-    minimize.translatesAutoresizingMaskIntoConstraints = NO;
-    minimize.tintColor = self.textColorK1;
-    minimize.titleLabel.font =
-        [UIFont boldSystemFontOfSize:20.0];
-
-    [minimize setTitle:@"−"
-              forState:UIControlStateNormal];
-
-    [minimize addTarget:self
-                 action:@selector(minimizePressed:)
-       forControlEvents:UIControlEventTouchUpInside];
-
-    [header addSubview:minimize];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [minimize.trailingAnchor
-         constraintEqualToAnchor:header.trailingAnchor
-         constant:-15.0],
-
-        [minimize.centerYAnchor
-         constraintEqualToAnchor:header.centerYAnchor],
-
-        [minimize.widthAnchor
-         constraintEqualToConstant:35.0],
-
-        [minimize.heightAnchor
-         constraintEqualToConstant:35.0]
-    ]];
-
-    /*
-     TAB BAR
-     */
-
-    UIView *tabBar = [[UIView alloc] init];
-    tabBar.translatesAutoresizingMaskIntoConstraints = NO;
-    tabBar.backgroundColor = [UIColor clearColor];
-
-    [self.mainPanel addSubview:tabBar];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [tabBar.topAnchor
-         constraintEqualToAnchor:header.bottomAnchor],
-
-        [tabBar.leadingAnchor
-         constraintEqualToAnchor:self.mainPanel.leadingAnchor
-         constant:10.0],
-
-        [tabBar.trailingAnchor
-         constraintEqualToAnchor:self.mainPanel.trailingAnchor
-         constant:-10.0],
-
-        [tabBar.heightAnchor
-         constraintEqualToConstant:43.0]
-    ]];
-
-    NSArray *names =
-        @[@"Main", @"Dupe", @"Settings", @"Credits"];
-
-    NSMutableArray *buttons =
-        [NSMutableArray array];
-
-    for (NSInteger i = 0; i < names.count; i++) {
-
-        UIButton *button =
-            [UIButton buttonWithType:UIButtonTypeSystem];
-
-        button.translatesAutoresizingMaskIntoConstraints = NO;
-        button.tag = 100 + i;
-
-        [button setTitle:names[i]
-                forState:UIControlStateNormal];
-
-        [button setTitleColor:self.secondaryTextColorK1
-                     forState:UIControlStateNormal];
-
-        button.titleLabel.font =
-            [UIFont systemFontOfSize:13.0
-                              weight:UIFontWeightSemibold];
-
-        [button addTarget:self
-                   action:@selector(tabPressed:)
-         forControlEvents:UIControlEventTouchUpInside];
-
-        [tabBar addSubview:button];
-        [buttons addObject:button];
+- (void)setupMainUI {
+    self.view.backgroundColor = [UIColor clearColor];
+    
+    // 80% Screen Bounds Calculation
+    CGFloat width = self.view.bounds.size.width * 0.80;
+    CGFloat height = self.view.bounds.size.height * 0.80;
+    CGFloat x = (self.view.bounds.size.width - width) / 2.0;
+    CGFloat y = (self.view.bounds.size.height - height) / 2.0;
+    
+    self.mainContainerView = [[UIView alloc] initWithFrame:CGRectMake(x, y, width, height)];
+    self.mainContainerView.backgroundColor = self.backgroundColor;
+    self.mainContainerView.layer.cornerRadius = 16.0;
+    self.mainContainerView.layer.borderWidth = 2.0;
+    self.mainContainerView.layer.borderColor = self.accentColor.CGColor;
+    self.mainContainerView.clipsToBounds = YES;
+    [self.view addSubview:self.mainContainerView];
+    
+    // Header View
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 50)];
+    headerView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.3];
+    [self.mainContainerView addSubview:headerView];
+    
+    // Left Icon Image
+    self.headerIconImageView = [[UIImageView alloc] initWithFrame:CGRectMake(12, 10, 30, 30)];
+    self.headerIconImageView.layer.cornerRadius = 6.0;
+    self.headerIconImageView.clipsToBounds = YES;
+    self.headerIconImageView.backgroundColor = [UIColor darkGrayColor];
+    [headerView addSubview:self.headerIconImageView];
+    
+    // Title Label
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(50, 10, 200, 30)];
+    titleLabel.text = @"K1e0n | stardew";
+    titleLabel.textColor = [UIColor whiteColor];
+    titleLabel.font = [UIFont boldSystemFontOfSize:16];
+    [headerView addSubview:titleLabel];
+    
+    // Minimize Button (Top Right)
+    UIButton *minButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    minButton.frame = CGRectMake(width - 42, 10, 30, 30);
+    [minButton setTitle:@"-" forState:UIControlStateNormal];
+    [minButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    minButton.backgroundColor = [UIColor colorWithWhite:0.2 alpha:0.6];
+    minButton.layer.cornerRadius = 15;
+    [minButton addTarget:self action:@selector(minimizeUI) forControlEvents:UIControlEventTouchUpInside];
+    [headerView addSubview:minButton];
+    
+    // Left Navigation Sidebar
+    UIView *sidebar = [[UIView alloc] initWithFrame:CGRectMake(0, 50, 120, height - 50)];
+    sidebar.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.2];
+    [self.mainContainerView addSubview:sidebar];
+    
+    NSArray *tabs = @[@"Main", @"Dupe", @"Settings", @"Credits"];
+    for (int i = 0; i < tabs.count; i++) {
+        UIButton *tabBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+        tabBtn.frame = CGRectMake(8, 15 + (i * 45), 104, 35);
+        [tabBtn setTitle:tabs[i] forState:UIControlStateNormal];
+        [tabBtn setTitleColor:self.textColor forState:UIControlStateNormal];
+        tabBtn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+        tabBtn.layer.cornerRadius = 8;
+        tabBtn.tag = i;
+        [tabBtn addTarget:self action:@selector(tabTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [self addComeCloserAnimationToButton:tabBtn];
+        [sidebar addSubview:tabBtn];
     }
-
-    self.tabButtons = buttons;
-
-    for (NSInteger i = 0; i < buttons.count; i++) {
-
-        UIButton *button = buttons[i];
-
-        [NSLayoutConstraint activateConstraints:@[
-            [button.topAnchor
-             constraintEqualToAnchor:tabBar.topAnchor],
-
-            [button.bottomAnchor
-             constraintEqualToAnchor:tabBar.bottomAnchor]
-        ]];
-
-        if (i == 0) {
-
-            [button.leadingAnchor
-             constraintEqualToAnchor:tabBar.leadingAnchor].active = YES;
-
-        } else {
-
-            UIButton *previous =
-                buttons[i - 1];
-
-            [button.leadingAnchor
-             constraintEqualToAnchor:previous.trailingAnchor].active = YES;
-
-            [button.widthAnchor
-             constraintEqualToAnchor:previous.widthAnchor].active = YES;
-        }
-
-        if (i == buttons.count - 1) {
-
-            [button.trailingAnchor
-             constraintEqualToAnchor:tabBar.trailingAnchor].active = YES;
-        }
-    }
-
-    /*
-     SCROLL VIEW
-     */
-
-    self.scrollView =
-        [[UIScrollView alloc] init];
-
-    self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.scrollView.showsVerticalScrollIndicator = NO;
-    self.scrollView.alwaysBounceVertical = YES;
-    self.scrollView.backgroundColor = [UIColor clearColor];
-
-    [self.mainPanel addSubview:self.scrollView];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.scrollView.topAnchor
-         constraintEqualToAnchor:tabBar.bottomAnchor],
-
-        [self.scrollView.leadingAnchor
-         constraintEqualToAnchor:self.mainPanel.leadingAnchor],
-
-        [self.scrollView.trailingAnchor
-         constraintEqualToAnchor:self.mainPanel.trailingAnchor],
-
-        [self.scrollView.bottomAnchor
-         constraintEqualToAnchor:self.mainPanel.bottomAnchor]
-    ]];
-
-    /*
-     CONTENT VIEW
-     */
-
-    self.contentView =
-        [[UIView alloc] init];
-
-    self.contentView.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [self.scrollView addSubview:self.contentView];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.contentView.topAnchor
-         constraintEqualToAnchor:self.scrollView.contentLayoutGuide.topAnchor],
-
-        [self.contentView.leadingAnchor
-         constraintEqualToAnchor:self.scrollView.contentLayoutGuide.leadingAnchor],
-
-        [self.contentView.trailingAnchor
-         constraintEqualToAnchor:self.scrollView.contentLayoutGuide.trailingAnchor],
-
-        [self.contentView.bottomAnchor
-         constraintEqualToAnchor:self.scrollView.contentLayoutGuide.bottomAnchor],
-
-        [self.contentView.widthAnchor
-         constraintEqualToAnchor:self.scrollView.frameLayoutGuide.widthAnchor]
-    ]];
-
-    /*
-     STACK VIEW
-     */
-
-    self.stackView =
-        [[UIStackView alloc] init];
-
-    self.stackView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.stackView.axis = UILayoutConstraintAxisVertical;
-    self.stackView.spacing = 13.0;
-    self.stackView.alignment = UIStackViewAlignmentFill;
-    self.stackView.distribution = UIStackViewDistributionFill;
-
-    [self.contentView addSubview:self.stackView];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.stackView.topAnchor
-         constraintEqualToAnchor:self.contentView.topAnchor
-         constant:15.0],
-
-        [self.stackView.leadingAnchor
-         constraintEqualToAnchor:self.contentView.leadingAnchor
-         constant:15.0],
-
-        [self.stackView.trailingAnchor
-         constraintEqualToAnchor:self.contentView.trailingAnchor
-         constant:-15.0],
-
-        [self.stackView.bottomAnchor
-         constraintEqualToAnchor:self.contentView.bottomAnchor
-         constant:-20.0]
-    ]];
-
-    /*
-     MINI PANEL
-     */
-
-    [self buildMiniPanel];
+    
+    // Main Content Area
+    self.contentAreaView = [[UIView alloc] initWithFrame:CGRectMake(120, 50, width - 120, height - 50)];
+    [self.mainContainerView addSubview:self.contentAreaView];
 }
 
-#pragma mark - Mini Panel
+#pragma mark - Minimized UI Box
 
-- (void)buildMiniPanel {
-
-    self.miniPanel =
-        [[UIView alloc] initWithFrame:CGRectMake(0, 0, 215, 58)];
-
-    self.miniPanel.backgroundColor = self.panelColorK1;
-    self.miniPanel.layer.cornerRadius = 17.0;
-    self.miniPanel.clipsToBounds = YES;
-    self.miniPanel.hidden = YES;
-
-    [self.view addSubview:self.miniPanel];
-
-    self.miniLogoView =
-        [[UIImageView alloc]
-         initWithFrame:CGRectMake(9, 9, 40, 40)];
-
-    self.miniLogoView.contentMode =
-        UIViewContentModeScaleAspectFill;
-
-    self.miniLogoView.clipsToBounds = YES;
-    self.miniLogoView.layer.cornerRadius = 11.0;
-
-    [self.miniPanel addSubview:self.miniLogoView];
-
-    self.miniTitleLabel =
-        [[UILabel alloc]
-         initWithFrame:CGRectMake(58, 0, 115, 58)];
-
-    self.miniTitleLabel.text = @"K1e0n | stardew";
-    self.miniTitleLabel.textColor = self.textColorK1;
-    self.miniTitleLabel.font =
-        [UIFont boldSystemFontOfSize:14.0];
-    self.miniTitleLabel.numberOfLines = 2;
-
-    [self.miniPanel addSubview:self.miniTitleLabel];
-
-    UIButton *restore =
-        [UIButton buttonWithType:UIButtonTypeSystem];
-
-    restore.frame =
-        CGRectMake(180, 10, 27, 38);
-
-    restore.tintColor = self.textColorK1;
-    restore.titleLabel.font =
-        [UIFont boldSystemFontOfSize:19.0];
-
-    [restore setTitle:@"+"
-             forState:UIControlStateNormal];
-
-    [restore addTarget:self
-                action:@selector(restorePressed:)
-      forControlEvents:UIControlEventTouchUpInside];
-
-    [self.miniPanel addSubview:restore];
+- (void)setupMinimizedUI {
+    self.minimizedView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 180, 50)];
+    self.minimizedView.backgroundColor = self.backgroundColor;
+    self.minimizedView.layer.cornerRadius = 12.0;
+    self.minimizedView.layer.borderWidth = 2.0;
+    self.minimizedView.layer.borderColor = self.accentColor.CGColor;
+    self.minimizedView.hidden = YES;
+    
+    UIImageView *minIcon = [[UIImageView alloc] initWithFrame:CGRectMake(8, 10, 30, 30)];
+    minIcon.layer.cornerRadius = 6.0;
+    minIcon.clipsToBounds = YES;
+    minIcon.image = self.headerIconImageView.image;
+    [self.minimizedView addSubview:minIcon];
+    
+    UILabel *minTitle = [[UILabel alloc] initWithFrame:CGRectMake(44, 10, 95, 30)];
+    minTitle.text = @"K1e0n";
+    minTitle.textColor = [UIColor whiteColor];
+    minTitle.font = [UIFont boldSystemFontOfSize:14];
+    [self.minimizedView addSubview:minTitle];
+    
+    UIButton *restoreBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    restoreBtn.frame = CGRectMake(142, 10, 30, 30);
+    [restoreBtn setTitle:@"+" forState:UIControlStateNormal];
+    [restoreBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    [restoreBtn addTarget:self action:@selector(restoreUI) forControlEvents:UIControlEventTouchUpInside];
+    [self.minimizedView addSubview:restoreBtn];
+    
+    [self.view addSubview:self.minimizedView];
 }
 
-- (void)layoutMiniPanel {
-
-    if (!self.miniPanel) {
-        return;
-    }
-
-    CGFloat margin = 14.0;
-
-    UIEdgeInsets safe =
-        self.view.safeAreaInsets;
-
-    CGFloat width =
-        self.miniPanel.bounds.size.width;
-
-    CGFloat height =
-        self.miniPanel.bounds.size.height;
-
-    CGFloat x = margin;
-    CGFloat y = safe.top + margin;
-
-    switch (self.minimizePosition) {
-
-        case K1MinimizeTopLeft:
-
-            x = margin;
-            y = safe.top + margin;
-
+- (void)updateMinimizedPosition {
+    CGFloat pad = 20.0;
+    CGFloat w = self.minimizedView.frame.size.width;
+    CGFloat h = self.minimizedView.frame.size.height;
+    CGFloat sw = self.view.bounds.size.width;
+    CGFloat sh = self.view.bounds.size.height;
+    
+    CGRect frame = CGRectMake(sw - w - pad, pad, w, h); // Default Top Right
+    switch (self.currentMinimizePos) {
+        case MinimizePositionTopLeft:
+            frame = CGRectMake(pad, pad, w, h);
             break;
-
-        case K1MinimizeTopRight:
-
-            x =
-                self.view.bounds.size.width -
-                width -
-                margin;
-
-            y = safe.top + margin;
-
+        case MinimizePositionTopRight:
+            frame = CGRectMake(sw - w - pad, pad, w, h);
             break;
-
-        case K1MinimizeBottomLeft:
-
-            x = margin;
-
-            y =
-                self.view.bounds.size.height -
-                height -
-                safe.bottom -
-                margin;
-
+        case MinimizePositionBottomLeft:
+            frame = CGRectMake(pad, sh - h - pad, w, h);
             break;
-
-        case K1MinimizeBottomRight:
-
-            x =
-                self.view.bounds.size.width -
-                width -
-                margin;
-
-            y =
-                self.view.bounds.size.height -
-                height -
-                safe.bottom -
-                margin;
-
+        case MinimizePositionBottomRight:
+            frame = CGRectMake(sw - w - pad, sh - h - pad, w, h);
             break;
     }
-
-    self.miniPanel.frame =
-        CGRectMake(x, y, width, height);
+    self.minimizedView.frame = frame;
 }
 
-#pragma mark - Tabs
+#pragma mark - Tab Views Setup
 
-- (void)tabPressed:(UIButton *)sender {
+- (void)setupContentTabs {
+    // 1. Main Tab
+    self.mainTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
+    UILabel *mLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 20, 200, 30)];
+    mLabel.text = @"Main Controls";
+    mLabel.textColor = [UIColor whiteColor];
+    [self.mainTabView addSubview:mLabel];
+    
+    // 2. Dupe Tab
+    self.dupeTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
+    [self setupDupeTabContent];
+    
+    // 3. Settings Tab
+    self.settingsTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
+    [self setupSettingsTabContent];
+    
+    // 4. Credits Tab
+    self.creditsTabView = [[UIView alloc] initWithFrame:self.contentAreaView.bounds];
+    [self setupCreditsTabContent];
+    
+    [self.contentAreaView addSubview:self.mainTabView];
+}
 
-    [self buttonPressAnimation:sender];
-
-    NSInteger index =
-        sender.tag - 100;
-
-    switch (index) {
-
-        case 0:
-            [self showMainTab];
-            break;
-
-        case 1:
-            [self showDupeTab];
-            break;
-
-        case 2:
-            [self showSettingsTab];
-            break;
-
-        case 3:
-            [self showCreditsTab];
-            break;
-
-        default:
-            break;
+- (void)tabTapped:(UIButton *)sender {
+    [self.mainTabView removeFromSuperview];
+    [self.dupeTabView removeFromSuperview];
+    [self.settingsTabView removeFromSuperview];
+    [self.creditsTabView removeFromSuperview];
+    
+    switch (sender.tag) {
+        case 0: [self.contentAreaView addSubview:self.mainTabView]; break;
+        case 1: [self.contentAreaView addSubview:self.dupeTabView]; break;
+        case 2: [self.contentAreaView addSubview:self.settingsTabView]; break;
+        case 3: [self.contentAreaView addSubview:self.creditsTabView]; break;
     }
 }
 
-- (void)selectTab:(NSInteger)index {
+#pragma mark - Dupe Tab Implementation
 
-    for (NSInteger i = 0;
-         i < self.tabButtons.count;
-         i++) {
-
-        UIButton *button =
-            self.tabButtons[i];
-
-        UIColor *color =
-            (i == index)
-            ? self.accentColorK1
-            : self.secondaryTextColorK1;
-
-        [button setTitleColor:color
-                     forState:UIControlStateNormal];
-    }
+- (void)setupDupeTabContent {
+    UIButton *dropdownBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    dropdownBtn.frame = CGRectMake(20, 20, 220, 40);
+    [dropdownBtn setTitle:@"Item List ▼" forState:UIControlStateNormal];
+    [dropdownBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    dropdownBtn.backgroundColor = [UIColor colorWithWhite:0.15 alpha:0.8];
+    dropdownBtn.layer.cornerRadius = 8;
+    [dropdownBtn addTarget:self action:@selector(toggleDupeList) forControlEvents:UIControlEventTouchUpInside];
+    [self addComeCloserAnimationToButton:dropdownBtn];
+    [self.dupeTabView addSubview:dropdownBtn];
+    
+    self.dupeTableView = [[UITableView alloc] initWithFrame:CGRectMake(20, 65, 220, 0) style:UITableViewStylePlain];
+    self.dupeTableView.delegate = self;
+    self.dupeTableView.dataSource = self;
+    self.dupeTableView.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.9];
+    self.dupeTableView.layer.cornerRadius = 8;
+    self.dupeTableView.clipsToBounds = YES;
+    [self.dupeTabView addSubview:self.dupeTableView];
+    
+    // Lower Input Box & Action Buttons
+    CGFloat yPos = self.contentAreaView.bounds.size.height - 70;
+    self.dupeTextField = [[UITextField alloc] initWithFrame:CGRectMake(20, yPos, 140, 40)];
+    self.dupeTextField.placeholder = @"Value...";
+    self.dupeTextField.backgroundColor = [UIColor colorWithWhite:0.2 alpha:0.8];
+    self.dupeTextField.textColor = [UIColor whiteColor];
+    self.dupeTextField.layer.cornerRadius = 8;
+    self.dupeTextField.returnKeyType = UIReturnKeySend;
+    self.dupeTextField.delegate = self;
+    [self.dupeTabView addSubview:self.dupeTextField];
+    
+    UIButton *setBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    setBtn.frame = CGRectMake(170, yPos, 70, 40);
+    [setBtn setTitle:@"SET" forState:UIControlStateNormal];
+    setBtn.backgroundColor = self.accentColor;
+    setBtn.layer.cornerRadius = 8;
+    [setBtn addTarget:self action:@selector(handleSetAction:) forControlEvents:UIControlEventTouchUpInside];
+    [self addComeCloserAnimationToButton:setBtn];
+    [self.dupeTabView addSubview:setBtn];
 }
 
-- (void)clearStack {
-
-    NSArray *views =
-        [self.stackView.arrangedSubviews copy];
-
-    for (UIView *view in views) {
-
-        [self.stackView removeArrangedSubview:view];
-        [view removeFromSuperview];
-    }
-}
-
-#pragma mark - Main
-
-- (void)showMainTab {
-
-    [self selectTab:0];
-    [self clearStack];
-
-    UILabel *heading =
-        [self label:@"Welcome to K1e0n"
-               size:22.0
-             weight:UIFontWeightBold];
-
-    [self.stackView addArrangedSubview:heading];
-
-    UIView *card =
-        [self card];
-
-    UILabel *title =
-        [self label:@"K1e0n | stardew"
-               size:18.0
-             weight:UIFontWeightBold];
-
-    UILabel *description =
-        [self label:@"A clean, compact Stardew Valley utility interface."
-               size:14.0
-             weight:UIFontWeightRegular];
-
-    description.textColor =
-        self.secondaryTextColorK1;
-
-    description.numberOfLines = 0;
-
-    title.translatesAutoresizingMaskIntoConstraints = NO;
-    description.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [card addSubview:title];
-    [card addSubview:description];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [title.topAnchor
-         constraintEqualToAnchor:card.topAnchor
-         constant:18.0],
-
-        [title.leadingAnchor
-         constraintEqualToAnchor:card.leadingAnchor
-         constant:17.0],
-
-        [title.trailingAnchor
-         constraintEqualToAnchor:card.trailingAnchor
-         constant:-17.0],
-
-        [description.topAnchor
-         constraintEqualToAnchor:title.bottomAnchor
-         constant:8.0],
-
-        [description.leadingAnchor
-         constraintEqualToAnchor:title.leadingAnchor],
-
-        [description.trailingAnchor
-         constraintEqualToAnchor:title.trailingAnchor],
-
-        [description.bottomAnchor
-         constraintEqualToAnchor:card.bottomAnchor
-         constant:-18.0]
-    ]];
-
-    [self.stackView addArrangedSubview:card];
-}
-
-#pragma mark - Dupe
-
-- (void)showDupeTab {
-
-    [self selectTab:1];
-    [self clearStack];
-
-    UILabel *heading =
-        [self label:@"Dupe"
-               size:22.0
-             weight:UIFontWeightBold];
-
-    [self.stackView addArrangedSubview:heading];
-
-    UIView *dupeCard =
-        [self card];
-
-    UILabel *itemLabel =
-        [self label:@"Parsnip seed"
-               size:17.0
-             weight:UIFontWeightSemibold];
-
-    itemLabel.translatesAutoresizingMaskIntoConstraints = NO;
-
-    UIButton *openButton =
-        [UIButton buttonWithType:UIButtonTypeSystem];
-
-    openButton.translatesAutoresizingMaskIntoConstraints = NO;
-    openButton.tag = 702;
-    openButton.layer.cornerRadius = 10.0;
-
-    openButton.backgroundColor =
-        [self.accentColorK1 colorWithAlphaComponent:0.15];
-
-    [openButton setTitle:@"OPEN"
-                forState:UIControlStateNormal];
-
-    [openButton setTitleColor:self.accentColorK1
-                     forState:UIControlStateNormal];
-
-    openButton.titleLabel.font =
-        [UIFont boldSystemFontOfSize:12.0];
-
-    [openButton addTarget:self
-                   action:@selector(parsnipPressed:)
-         forControlEvents:UIControlEventTouchUpInside];
-
-    [dupeCard addSubview:itemLabel];
-    [dupeCard addSubview:openButton];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [itemLabel.topAnchor
-         constraintEqualToAnchor:dupeCard.topAnchor
-         constant:17.0],
-
-        [itemLabel.leadingAnchor
-         constraintEqualToAnchor:dupeCard.leadingAnchor
-         constant:16.0],
-
-        [itemLabel.bottomAnchor
-         constraintEqualToAnchor:dupeCard.bottomAnchor
-         constant:-17.0],
-
-        [openButton.centerYAnchor
-         constraintEqualToAnchor:itemLabel.centerYAnchor],
-
-        [openButton.trailingAnchor
-         constraintEqualToAnchor:dupeCard.trailingAnchor
-         constant:-12.0],
-
-        [openButton.widthAnchor
-         constraintEqualToConstant:65.0],
-
-        [openButton.heightAnchor
-         constraintEqualToConstant:32.0]
-    ]];
-
-    [self.stackView addArrangedSubview:dupeCard];
-
-    /*
-     SEND CARD
-     */
-
-    UIView *sendCard =
-        [self card];
-
-    UILabel *sendTitle =
-        [self label:@"Send value"
-               size:16.0
-             weight:UIFontWeightSemibold];
-
-    sendTitle.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [sendCard addSubview:sendTitle];
-
-    UITextField *field =
-        [[UITextField alloc] init];
-
-    field.translatesAutoresizingMaskIntoConstraints = NO;
-
-    field.placeholder =
-        @"Enter value...";
-
-    field.textColor =
-        self.textColorK1;
-
-    field.tintColor =
-        self.accentColorK1;
-
-    field.backgroundColor =
-        [UIColor colorWithWhite:0.0
-                          alpha:0.18];
-
-    field.layer.cornerRadius = 10.0;
-
-    field.leftView =
-        [[UIView alloc]
-         initWithFrame:CGRectMake(0, 0, 12, 0)];
-
-    field.leftViewMode =
-        UITextFieldViewModeAlways;
-
-    field.returnKeyType =
-        UIReturnKeySend;
-
-    field.delegate = self;
-
-    [sendCard addSubview:field];
-
-    UIButton *setButton =
-        [UIButton buttonWithType:UIButtonTypeSystem];
-
-    setButton.translatesAutoresizingMaskIntoConstraints = NO;
-    setButton.layer.cornerRadius = 10.0;
-    setButton.backgroundColor =
-        self.accentColorK1;
-
-    [setButton setTitle:@"SET"
-               forState:UIControlStateNormal];
-
-    [setButton setTitleColor:[UIColor whiteColor]
-                    forState:UIControlStateNormal];
-
-    setButton.titleLabel.font =
-        [UIFont boldSystemFontOfSize:13.0];
-
-    [setButton addTarget:self
-                  action:@selector(setPressed:)
-        forControlEvents:UIControlEventTouchUpInside];
-
-    [sendCard addSubview:setButton];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [sendTitle.topAnchor
-         constraintEqualToAnchor:sendCard.topAnchor
-         constant:16.0],
-
-        [sendTitle.leadingAnchor
-         constraintEqualToAnchor:sendCard.leadingAnchor
-         constant:16.0],
-
-        [field.topAnchor
-         constraintEqualToAnchor:sendTitle.bottomAnchor
-         constant:11.0],
-
-        [field.leadingAnchor
-         constraintEqualToAnchor:sendCard.leadingAnchor
-         constant:16.0],
-
-        [field.bottomAnchor
-         constraintEqualToAnchor:sendCard.bottomAnchor
-         constant:-16.0],
-
-        [field.heightAnchor
-         constraintEqualToConstant:44.0],
-
-        [setButton.leadingAnchor
-         constraintEqualToAnchor:field.trailingAnchor
-         constant:8.0],
-
-        [setButton.trailingAnchor
-         constraintEqualToAnchor:sendCard.trailingAnchor
-         constant:-16.0],
-
-        [setButton.centerYAnchor
-         constraintEqualToAnchor:field.centerYAnchor],
-
-        [setButton.widthAnchor
-         constraintEqualToConstant:55.0],
-
-        [setButton.heightAnchor
-         constraintEqualToConstant:44.0]
-    ]];
-
-    [self.stackView addArrangedSubview:sendCard];
-}
-
-- (void)parsnipPressed:(UIButton *)button {
-
-    [self buttonPressAnimation:button];
-
-    UIView *card =
-        button.superview;
-
-    UILabel *address =
-        [card viewWithTag:703];
-
-    if (address) {
-
-        [UIView animateWithDuration:0.22
-                         animations:^{
-            address.alpha = 0.0;
-        }
-                         completion:^(BOOL finished) {
-
-            [address removeFromSuperview];
-
-            [button setTitle:@"OPEN"
-                    forState:UIControlStateNormal];
-        }];
-
-        return;
-    }
-
-    UILabel *value =
-        [self label:@"base + 0x11d833b18"
-               size:13.0
-             weight:UIFontWeightMedium];
-
-    value.tag = 703;
-    value.textColor =
-        self.secondaryTextColorK1;
-
-    value.alpha = 0.0;
-    value.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [card addSubview:value];
-
-    UILabel *item = nil;
-
-    for (UIView *view in card.subviews) {
-
-        if ([view isKindOfClass:[UILabel class]] &&
-            view.tag != 703) {
-
-            item = (UILabel *)view;
-            break;
-        }
-    }
-
-    if (!item) {
-
-        [value removeFromSuperview];
-        return;
-    }
-
-    [NSLayoutConstraint activateConstraints:@[
-        [value.topAnchor
-         constraintEqualToAnchor:item.bottomAnchor
-         constant:7.0],
-
-        [value.leadingAnchor
-         constraintEqualToAnchor:card.leadingAnchor
-         constant:16.0],
-
-        [value.trailingAnchor
-         constraintEqualToAnchor:card.trailingAnchor
-         constant:-85.0],
-
-        [value.bottomAnchor
-         constraintEqualToAnchor:card.bottomAnchor
-         constant:-15.0]
-    ]];
-
-    [UIView animateWithDuration:0.25
-                     animations:^{
-        value.alpha = 1.0;
+- (void)toggleDupeList {
+    self.isDupeListExpanded = !self.isDupeListExpanded;
+    [UIView animateWithDuration:0.3 animations:^{
+        CGRect frame = self.dupeTableView.frame;
+        frame.size.height = self.isDupeListExpanded ? 80 : 0;
+        self.dupeTableView.frame = frame;
     }];
-
-    [button setTitle:@"CLOSE"
-            forState:UIControlStateNormal];
 }
 
-- (void)setPressed:(UIButton *)button {
-
-    [self buttonPressAnimation:button];
-
-    UIView *card =
-        button.superview;
-
-    for (UIView *view in card.subviews) {
-
-        if ([view isKindOfClass:[UITextField class]]) {
-
-            UITextField *field =
-                (UITextField *)view;
-
-            [field resignFirstResponder];
-
-            [UIView animateWithDuration:0.22
-                             animations:^{
-                field.alpha = 0.0;
-            }];
-
-            break;
-        }
-    }
-}
-
-#pragma mark - Keyboard
-
-- (BOOL)textFieldShouldReturn:(UITextField *)textField {
-
-    [textField resignFirstResponder];
-
-    [UIView animateWithDuration:0.22
-                     animations:^{
-        textField.alpha = 0.0;
-    }];
-
-    return YES;
-}
-
-#pragma mark - Settings
-
-- (void)showSettingsTab {
-
-    [self selectTab:2];
-    [self clearStack];
-
-    UILabel *heading =
-        [self label:@"Settings"
-               size:22.0
-             weight:UIFontWeightBold];
-
-    [self.stackView addArrangedSubview:heading];
-
-    /*
-     POSITION
-     */
-
-    UIView *positionCard =
-        [self card];
-
-    UILabel *positionTitle =
-        [self label:@"Minimize position"
-               size:16.0
-             weight:UIFontWeightSemibold];
-
-    positionTitle.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [positionCard addSubview:positionTitle];
-
-    UISegmentedControl *position =
-        [[UISegmentedControl alloc]
-         initWithItems:@[
-             @"TL",
-             @"TR",
-             @"BL",
-             @"BR"
-         ]];
-
-    position.translatesAutoresizingMaskIntoConstraints = NO;
-    position.selectedSegmentIndex =
-        self.minimizePosition;
-
-    [position addTarget:self
-                 action:@selector(positionChanged:)
-       forControlEvents:UIControlEventValueChanged];
-
-    [positionCard addSubview:position];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [positionTitle.topAnchor
-         constraintEqualToAnchor:positionCard.topAnchor
-         constant:16.0],
-
-        [positionTitle.leadingAnchor
-         constraintEqualToAnchor:positionCard.leadingAnchor
-         constant:16.0],
-
-        [position.topAnchor
-         constraintEqualToAnchor:positionTitle.bottomAnchor
-         constant:12.0],
-
-        [position.leadingAnchor
-         constraintEqualToAnchor:positionCard.leadingAnchor
-         constant:16.0],
-
-        [position.trailingAnchor
-         constraintEqualToAnchor:positionCard.trailingAnchor
-         constant:-16.0],
-
-        [position.bottomAnchor
-         constraintEqualToAnchor:positionCard.bottomAnchor
-         constant:-16.0],
-
-        [position.heightAnchor
-         constraintEqualToConstant:36.0]
-    ]];
-
-    [self.stackView addArrangedSubview:positionCard];
-
-    /*
-     THEME
-     */
-
-    UIView *themeCard =
-        [self card];
-
-    UILabel *themeTitle =
-        [self label:@"Theme"
-               size:16.0
-             weight:UIFontWeightSemibold];
-
-    themeTitle.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [themeCard addSubview:themeTitle];
-
-    UISegmentedControl *theme =
-        [[UISegmentedControl alloc]
-         initWithItems:@[
-             @"Strongest",
-             @"Lazy Genius"
-         ]];
-
-    theme.translatesAutoresizingMaskIntoConstraints = NO;
-    theme.selectedSegmentIndex =
-        self.themeIndex;
-
-    [theme addTarget:self
-              action:@selector(themeChanged:)
-    forControlEvents:UIControlEventValueChanged];
-
-    [themeCard addSubview:theme];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [themeTitle.topAnchor
-         constraintEqualToAnchor:themeCard.topAnchor
-         constant:16.0],
-
-        [themeTitle.leadingAnchor
-         constraintEqualToAnchor:themeCard.leadingAnchor
-         constant:16.0],
-
-        [theme.topAnchor
-         constraintEqualToAnchor:themeTitle.bottomAnchor
-         constant:12.0],
-
-        [theme.leadingAnchor
-         constraintEqualToAnchor:themeCard.leadingAnchor
-         constant:16.0],
-
-        [theme.trailingAnchor
-         constraintEqualToAnchor:themeCard.trailingAnchor
-         constant:-16.0],
-
-        [theme.bottomAnchor
-         constraintEqualToAnchor:themeCard.bottomAnchor
-         constant:-16.0],
-
-        [theme.heightAnchor
-         constraintEqualToConstant:36.0]
-    ]];
-
-    [self.stackView addArrangedSubview:themeCard];
-
-    /*
-     RECORDING
-     */
-
-    UIView *recordingCard =
-        [self card];
-
-    UILabel *recordingLabel =
-        [self label:@"Hide recording"
-               size:16.0
-             weight:UIFontWeightSemibold];
-
-    recordingLabel.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [recordingCard addSubview:recordingLabel];
-
-    UISwitch *recordingSwitch =
-        [[UISwitch alloc] init];
-
-    recordingSwitch.translatesAutoresizingMaskIntoConstraints = NO;
-    recordingSwitch.onTintColor =
-        self.accentColorK1;
-
-    [recordingSwitch addTarget:self
-                        action:@selector(recordingChanged:)
-              forControlEvents:UIControlEventValueChanged];
-
-    [recordingCard addSubview:recordingSwitch];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [recordingLabel.leadingAnchor
-         constraintEqualToAnchor:recordingCard.leadingAnchor
-         constant:16.0],
-
-        [recordingLabel.topAnchor
-         constraintEqualToAnchor:recordingCard.topAnchor
-         constant:17.0],
-
-        [recordingLabel.bottomAnchor
-         constraintEqualToAnchor:recordingCard.bottomAnchor
-         constant:-17.0],
-
-        [recordingSwitch.trailingAnchor
-         constraintEqualToAnchor:recordingCard.trailingAnchor
-         constant:-16.0],
-
-        [recordingSwitch.centerYAnchor
-         constraintEqualToAnchor:recordingLabel.centerYAnchor]
-    ]];
-
-    [self.stackView addArrangedSubview:recordingCard];
+#pragma mark - Settings Tab Implementation
+
+- (void)setupSettingsTabContent {
+    UILabel *posLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 20, 200, 25)];
+    posLabel.text = @"Minimize Position";
+    posLabel.textColor = [UIColor whiteColor];
+    [self.settingsTabView addSubview:posLabel];
+    
+    UISegmentedControl *posSeg = [[UISegmentedControl alloc] initWithItems:@[@"TL", @"TR", @"BL", @"BR"]];
+    posSeg.frame = CGRectMake(20, 50, 240, 32);
+    posSeg.selectedSegmentIndex = 1;
+    [posSeg addTarget:self action:@selector(positionChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.settingsTabView addSubview:posSeg];
+    
+    UILabel *themeLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 100, 200, 25)];
+    themeLabel.text = @"Theme";
+    themeLabel.textColor = [UIColor whiteColor];
+    [self.settingsTabView addSubview:themeLabel];
+    
+    UISegmentedControl *themeSeg = [[UISegmentedControl alloc] initWithItems:@[@"Strongests", @"Lazy Genius"]];
+    themeSeg.frame = CGRectMake(20, 130, 240, 32);
+    themeSeg.selectedSegmentIndex = 0;
+    [themeSeg addTarget:self action:@selector(themeChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.settingsTabView addSubview:themeSeg];
+    
+    UILabel *hideRecLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 185, 150, 31)];
+    hideRecLabel.text = @"Hide Recording";
+    hideRecLabel.textColor = [UIColor whiteColor];
+    [self.settingsTabView addSubview:hideRecLabel];
+    
+    UISwitch *hideSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(180, 185, 51, 31)];
+    [hideSwitch addTarget:self action:@selector(toggleHideRecording:) forControlEvents:UIControlEventValueChanged];
+    [self.settingsTabView addSubview:hideSwitch];
 }
 
 - (void)positionChanged:(UISegmentedControl *)sender {
-
-    self.minimizePosition =
-        (K1MinimizePosition)sender.selectedSegmentIndex;
-
-    if (self.minimized) {
-        [self layoutMiniPanel];
-    }
+    self.currentMinimizePos = (MinimizePosition)sender.selectedSegmentIndex;
 }
 
 - (void)themeChanged:(UISegmentedControl *)sender {
+    self.currentTheme = (UITheme)sender.selectedSegmentIndex;
+    [self setupThemeColors];
+}
 
-    self.themeIndex =
-        sender.selectedSegmentIndex;
-
-    NSString *url =
-        self.themeIndex == 0
-        ? self.strongestURL
-        : self.lazyGeniusURL;
-
-    if (self.themeIndex == 0) {
-
-        self.accentColorK1 =
-            [UIColor colorWithRed:0.55
-                            green:0.25
-                             blue:1.0
-                            alpha:1.0];
-
-    } else {
-
-        self.accentColorK1 =
-            [UIColor colorWithRed:0.15
-                            green:0.75
-                             blue:0.65
-                            alpha:1.0];
+- (void)toggleHideRecording:(UISwitch *)sender {
+    // Screen capture protection overlay toggle
+    if ([self.view.window respondsToSelector:@selector(setPreventsCapture:)]) {
+        [self.view.window performSelector:@selector(setPreventsCapture:) withObject:@(sender.isOn)];
     }
-
-    [self loadImageURL:url
-       intoImageView:self.logoView];
-
-    [self loadImageURL:url
-       intoImageView:self.miniLogoView];
-
-    /*
-     Refresh the current tab so controls
-     use the new accent color.
-     */
-
-    [self showSettingsTab];
 }
 
-- (void)recordingChanged:(UISwitch *)sender {
-    // Visual setting only.
+#pragma mark - Credits Tab Implementation
+
+- (void)setupCreditsTabContent {
+    UILabel *devLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 30, 240, 25)];
+    devLabel.text = @"Developer: Ales04718";
+    devLabel.textColor = [UIColor whiteColor];
+    devLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
+    [self.creditsTabView addSubview:devLabel];
+    
+    UIButton *discordBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    discordBtn.frame = CGRectMake(20, 75, 220, 40);
+    [discordBtn setTitle:@"discord.gg/DKdAG9VTjh" forState:UIControlStateNormal];
+    [discordBtn setTitleColor:self.accentColor forState:UIControlStateNormal];
+    discordBtn.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.6];
+    discordBtn.layer.cornerRadius = 8;
+    [discordBtn addTarget:self action:@selector(copyDiscordLink) forControlEvents:UIControlEventTouchUpInside];
+    [self addComeCloserAnimationToButton:discordBtn];
+    [self.creditsTabView addSubview:discordBtn];
 }
 
-#pragma mark - Credits
-
-- (void)showCreditsTab {
-
-    [self selectTab:3];
-    [self clearStack];
-
-    UILabel *heading =
-        [self label:@"Credits"
-               size:22.0
-             weight:UIFontWeightBold];
-
-    [self.stackView addArrangedSubview:heading];
-
-    UIView *card =
-        [self card];
-
-    UILabel *developer =
-        [self label:@"Developer"
-               size:13.0
-             weight:UIFontWeightMedium];
-
-    developer.textColor =
-        self.secondaryTextColorK1;
-
-    developer.translatesAutoresizingMaskIntoConstraints = NO;
-
-    UILabel *name =
-        [self label:@"Ales04718"
-               size:19.0
-             weight:UIFontWeightBold];
-
-    name.translatesAutoresizingMaskIntoConstraints = NO;
-
-    UILabel *discord =
-        [self label:@"discord.gg/DKdAG9VTjh"
-               size:15.0
-             weight:UIFontWeightSemibold];
-
-    discord.textColor =
-        self.accentColorK1;
-
-    discord.translatesAutoresizingMaskIntoConstraints = NO;
-    discord.userInteractionEnabled = YES;
-
-    [card addSubview:developer];
-    [card addSubview:name];
-    [card addSubview:discord];
-
-    UITapGestureRecognizer *tap =
-        [[UITapGestureRecognizer alloc]
-         initWithTarget:self
-         action:@selector(discordTapped:)];
-
-    [discord addGestureRecognizer:tap];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [developer.topAnchor
-         constraintEqualToAnchor:card.topAnchor
-         constant:17.0],
-
-        [developer.leadingAnchor
-         constraintEqualToAnchor:card.leadingAnchor
-         constant:17.0],
-
-        [name.topAnchor
-         constraintEqualToAnchor:developer.bottomAnchor
-         constant:5.0],
-
-        [name.leadingAnchor
-         constraintEqualToAnchor:developer.leadingAnchor],
-
-        [discord.topAnchor
-         constraintEqualToAnchor:name.bottomAnchor
-         constant:15.0],
-
-        [discord.leadingAnchor
-         constraintEqualToAnchor:developer.leadingAnchor],
-
-        [discord.bottomAnchor
-         constraintEqualToAnchor:card.bottomAnchor
-         constant:-17.0]
-    ]];
-
-    [self.stackView addArrangedSubview:card];
-}
-
-- (void)discordTapped:(UITapGestureRecognizer *)gesture {
-
-    UIPasteboard.generalPasteboard.string =
-        @"discord.gg/DKdAG9VTjh";
-
-    UILabel *label =
-        (UILabel *)gesture.view;
-
-    NSString *oldText =
-        label.text;
-
-    label.text = @"Copied!";
-
-    dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW,
-                      (int64_t)(1.0 * NSEC_PER_SEC)),
-        dispatch_get_main_queue(),
-        ^{
-            label.text = oldText;
-        }
-    );
-}
-
-#pragma mark - Minimize
-
-- (void)minimizePressed:(UIButton *)button {
-
-    [self buttonPressAnimation:button];
-
-    self.minimized = YES;
-
-    [UIView animateWithDuration:0.30
-                          delay:0.0
-         usingSpringWithDamping:0.82
-          initialSpringVelocity:0.2
-                        options:UIViewAnimationOptionCurveEaseInOut
-                     animations:^{
-
-        self.mainPanel.alpha = 0.0;
-
-        self.mainPanel.transform =
-            CGAffineTransformMakeScale(0.72, 0.72);
-
-    }
-                     completion:^(BOOL finished) {
-
-        self.mainPanel.hidden = YES;
-
-        self.mainPanel.transform =
-            CGAffineTransformIdentity;
-
-        self.miniPanel.hidden = NO;
-        self.miniPanel.alpha = 0.0;
-
-        self.miniPanel.transform =
-            CGAffineTransformMakeScale(0.75, 0.75);
-
-        [self layoutMiniPanel];
-
-        [UIView animateWithDuration:0.28
-                              delay:0.0
-             usingSpringWithDamping:0.75
-              initialSpringVelocity:0.3
-                            options:UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-
-            self.miniPanel.alpha = 1.0;
-
-            self.miniPanel.transform =
-                CGAffineTransformIdentity;
-
-        }
-                         completion:nil];
+- (void)copyDiscordLink {
+    [UIPasteboard generalPasteboard].string = @"discord.gg/DKdAG9VTjh";
+    
+    // Quick Feedback VFX
+    UILabel *copiedToast = [[UILabel alloc] initWithFrame:CGRectMake(20, 125, 220, 25)];
+    copiedToast.text = @"Copied to clipboard!";
+    copiedToast.textColor = [UIColor greenColor];
+    copiedToast.font = [UIFont systemFontOfSize:12];
+    [self.creditsTabView addSubview:copiedToast];
+    
+    [UIView animateWithDuration:1.5 animations:^{
+        copiedToast.alpha = 0.0;
+    } completion:^(BOOL finished) {
+        [copiedToast removeFromSuperview];
     }];
 }
 
-- (void)restorePressed:(UIButton *)button {
+#pragma mark - Animations & VFX
 
-    [self buttonPressAnimation:button];
+- (void)addComeCloserAnimationToButton:(UIButton *)button {
+    [button addTarget:self action:@selector(buttonTouchDown:) forControlEvents:UIControlEventTouchDown];
+    [button addTarget:self action:@selector(buttonTouchUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
+}
 
-    self.minimized = NO;
-
-    self.mainPanel.hidden = NO;
-    self.mainPanel.alpha = 0.0;
-
-    self.mainPanel.transform =
-        CGAffineTransformMakeScale(0.78, 0.78);
-
-    [UIView animateWithDuration:0.28
-                          delay:0.0
-         usingSpringWithDamping:0.78
-          initialSpringVelocity:0.25
-                        options:UIViewAnimationOptionCurveEaseOut
-                     animations:^{
-
-        self.mainPanel.alpha = 1.0;
-
-        self.mainPanel.transform =
-            CGAffineTransformIdentity;
-
-        self.miniPanel.alpha = 0.0;
-
-        self.miniPanel.transform =
-            CGAffineTransformMakeScale(0.75, 0.75);
-
-    }
-                     completion:^(BOOL finished) {
-
-        self.miniPanel.hidden = YES;
-
-        self.miniPanel.transform =
-            CGAffineTransformIdentity;
-
-        self.miniPanel.alpha = 1.0;
+- (void)buttonTouchDown:(UIButton *)btn {
+    [UIView animateWithDuration:0.15 animations:^{
+        btn.transform = CGAffineTransformMakeScale(1.08, 1.08); // "Come closer" effect
     }];
 }
 
-#pragma mark - Helpers
-
-- (UIView *)card {
-
-    UIView *view =
-        [[UIView alloc] init];
-
-    view.backgroundColor =
-        self.cardColorK1;
-
-    view.layer.cornerRadius = 15.0;
-    view.layer.borderWidth = 1.0;
-
-    view.layer.borderColor =
-        [UIColor colorWithWhite:1.0
-                          alpha:0.055].CGColor;
-
-    view.translatesAutoresizingMaskIntoConstraints = NO;
-
-    return view;
-}
-
-- (UILabel *)label:(NSString *)text
-              size:(CGFloat)size
-            weight:(UIFontWeight)weight {
-
-    UILabel *label =
-        [[UILabel alloc] init];
-
-    label.text = text;
-    label.textColor =
-        self.textColorK1;
-
-    label.font =
-        [UIFont systemFontOfSize:size
-                          weight:weight];
-
-    label.numberOfLines = 0;
-
-    return label;
-}
-
-- (void)buttonPressAnimation:(UIView *)view {
-
-    [UIView animateWithDuration:0.08
-                          delay:0.0
-                        options:UIViewAnimationOptionCurveEaseOut
-                     animations:^{
-
-        view.transform =
-            CGAffineTransformMakeScale(0.92, 0.92);
-
-    }
-                     completion:^(BOOL finished) {
-
-        [UIView animateWithDuration:0.18
-                              delay:0.0
-             usingSpringWithDamping:0.55
-              initialSpringVelocity:0.5
-                            options:UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-
-            view.transform =
-                CGAffineTransformIdentity;
-
-        }
-                         completion:nil];
+- (void)buttonTouchUp:(UIButton *)btn {
+    [UIView animateWithDuration:0.15 animations:^{
+        btn.transform = CGAffineTransformIdentity;
     }];
 }
 
-#pragma mark - Image Loading
+- (void)triggerCoolVFXOnView:(UIView *)targetView {
+    // Glowing pulse effect
+    CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+    pulse.duration = 0.2;
+    pulse.repeatCount = 1;
+    pulse.autoreverses = YES;
+    pulse.fromValue = @(1.0);
+    pulse.toValue = @(1.15);
+    [targetView.layer addAnimation:pulse forKey:@"vfxPulse"];
+}
 
-- (void)loadImageURL:(NSString *)url
-     intoImageView:(UIImageView *)imageView {
+#pragma mark - Minimized State Actions
 
-    if (url.length == 0 || !imageView) {
-        return;
+- (void)minimizeUI {
+    [self updateMinimizedPosition];
+    self.mainContainerView.hidden = YES;
+    self.minimizedView.hidden = NO;
+}
+
+- (void)restoreUI {
+    self.minimizedView.hidden = YES;
+    self.mainContainerView.hidden = NO;
+}
+
+#pragma mark - Keyboard Delegate
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [textField resignFirstResponder]; // Hide keyboard on Send tap
+    [self triggerCoolVFXOnView:textField];
+    return YES;
+}
+
+- (void)handleSetAction:(UIButton *)sender {
+    [self triggerCoolVFXOnView:sender];
+    [self.dupeTextField resignFirstResponder];
+}
+
+#pragma mark - TableView Delegate (Dupe Items)
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return 1;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"dupeCell"];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"dupeCell"];
+        cell.backgroundColor = [UIColor clearColor];
+        cell.textLabel.textColor = [UIColor whiteColor];
+        cell.detailTextLabel.textColor = [UIColor lightGrayColor];
     }
+    cell.textLabel.text = @"Parsnip seed";
+    cell.detailTextLabel.text = @"base + 0x11d833b18";
+    return cell;
+}
 
-    NSURL *URL =
-        [NSURL URLWithString:url];
+#pragma mark - Image Downloader
 
-    if (!URL) {
-
-        NSLog(@"K1e0n: invalid image URL: %@",
-              url);
-
-        return;
-    }
-
-    NSURLSessionDataTask *task =
-        [[NSURLSession sharedSession]
-         dataTaskWithURL:URL
-         completionHandler:^(NSData *data,
-                             NSURLResponse *response,
-                             NSError *error) {
-
-        if (error) {
-
-            NSLog(@"K1e0n: image error: %@",
-                  error.localizedDescription);
-
-            return;
+- (void)loadIconImage {
+    NSString *urlString = @"https://s142.convertio.me/p/m8eu8iTaugBcalmDfo5PiQ/7e7639715e33888f881fe89e1d094700/IMG_0713.png";
+    NSURL *url = [NSURL URLWithString:urlString];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+        NSData *data = [NSData dataWithContentsOfURL:url];
+        if (data) {
+            UIImage *img = [UIImage imageWithData:data];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.headerIconImageView.image = img;
+            });
         }
-
-        if (data.length == 0) {
-
-            NSLog(@"K1e0n: image returned no data");
-
-            return;
-        }
-
-        UIImage *image =
-            [UIImage imageWithData:data];
-
-        if (!image) {
-
-            NSLog(@"K1e0n: downloaded data is not an image");
-
-            return;
-        }
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-
-            /*
-             Make sure the image view still exists
-             before updating it.
-             */
-
-            if (!imageView) {
-                return;
-            }
-
-            imageView.image = image;
-            imageView.alpha = 0.0;
-
-            [UIView animateWithDuration:0.25
-                             animations:^{
-                imageView.alpha = 1.0;
-            }];
-        });
-    }];
-
-    [task resume];
+    });
 }
 
 @end
