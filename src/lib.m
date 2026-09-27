@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 
 typedef NS_ENUM(NSInteger, MinimizePosition) {
     MinimizePositionTopLeft,
@@ -46,7 +47,7 @@ typedef NS_ENUM(NSInteger, UITheme) {
 @implementation StardewMenuViewController
 
 - (void)viewDidLoad {
-    [super meViewDidLoad];
+    [super viewDidLoad];
     
     self.currentMinimizePos = MinimizePositionTopRight;
     self.currentTheme = UIThemeStrongests;
