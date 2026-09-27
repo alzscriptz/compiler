@@ -1,6 +1,5 @@
 #import <UIKit/UIKit.h>
-
-#pragma mark - K1e0n View Controller
+#import <QuartzCore/QuartzCore.h>
 
 typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     K1MinimizeTopLeft = 0,
@@ -9,7 +8,7 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
     K1MinimizeBottomRight
 };
 
-@interface K1e0nViewController : UIViewController <UITextFieldDelegate>
+@interface K1e0nViewController () <UITextFieldDelegate>
 
 @property (nonatomic, strong) UIView *mainPanel;
 @property (nonatomic, strong) UIView *miniPanel;
@@ -32,10 +31,16 @@ typedef NS_ENUM(NSInteger, K1MinimizePosition) {
 
 @implementation K1e0nViewController
 
-#pragma mark - Constants
+#pragma mark - URLs
 
 static NSString * const K1LogoURL =
 @"https://s142.convertio.me/p/m8eu8iTaugBcalmDfo5PiQ/7e7639715e33888f881fe89e1d094700/IMG_0713.png";
+
+static NSString * const K1StrongestURL =
+@"https://s142.convertio.me/p/urkH2ptPuH_rcb2qlMnk9A/7e7639715e33888f881fe89e1d094700/IMG_0737.png";
+
+static NSString * const K1LazyGeniusURL =
+@"https://s141.convertio.me/p/Fru0NesntE1_Vn3ymUpKIg/7e7639715e33888f881fe89e1d094700/IMG_0780.png";
 
 #pragma mark - Colors
 
@@ -82,13 +87,14 @@ static UIColor *K1MutedColor(void) {
 
     self.view.backgroundColor = K1BackgroundColor();
 
+    self.minimized = NO;
     self.minimizePosition = K1MinimizeTopRight;
     self.themeIndex = 0;
-    self.minimized = NO;
 
     [self buildMainPanel];
     [self buildMiniPanel];
-    [self loadLogo];
+    [self loadImageFromURL:K1LogoURL
+                 intoImageView:self.logoImageView];
 
     [self showMain];
 }
@@ -109,8 +115,6 @@ static UIColor *K1MutedColor(void) {
     self.mainPanel.backgroundColor = K1PanelColor();
 
     self.mainPanel.layer.cornerRadius = 26.0;
-    self.mainPanel.layer.masksToBounds = NO;
-
     self.mainPanel.layer.borderWidth = 1.0;
     self.mainPanel.layer.borderColor =
         [UIColor colorWithWhite:1.0 alpha:0.10].CGColor;
@@ -118,7 +122,7 @@ static UIColor *K1MutedColor(void) {
     self.mainPanel.layer.shadowColor =
         UIColor.blackColor.CGColor;
 
-    self.mainPanel.layer.shadowOpacity = 0.40;
+    self.mainPanel.layer.shadowOpacity = 0.45;
     self.mainPanel.layer.shadowRadius = 30.0;
     self.mainPanel.layer.shadowOffset =
         CGSizeMake(0.0, 14.0);
@@ -135,6 +139,9 @@ static UIColor *K1MutedColor(void) {
     self.logoImageView =
         [[UIImageView alloc] init];
 
+    self.logoImageView.backgroundColor =
+        K1CardColor();
+
     self.logoImageView.contentMode =
         UIViewContentModeScaleAspectFill;
 
@@ -146,11 +153,8 @@ static UIColor *K1MutedColor(void) {
     self.titleLabel =
         [[UILabel alloc] init];
 
-    self.titleLabel.text =
-        @"K1e0n | stardew";
-
-    self.titleLabel.textColor =
-        K1TextColor();
+    self.titleLabel.text = @"K1e0n | stardew";
+    self.titleLabel.textColor = K1TextColor();
 
     self.titleLabel.font =
         [UIFont systemFontOfSize:19.0
@@ -161,14 +165,12 @@ static UIColor *K1MutedColor(void) {
     UIButton *minimize =
         [self makeButton:@"−"];
 
-    minimize.accessibilityLabel =
-        @"Minimize";
+    minimize.tag = 500;
+    minimize.accessibilityLabel = @"Minimize";
 
     [minimize addTarget:self
                  action:@selector(toggleMinimize)
        forControlEvents:UIControlEventTouchUpInside];
-
-    minimize.tag = 500;
 
     [self.mainPanel addSubview:minimize];
 }
@@ -188,11 +190,8 @@ static UIColor *K1MutedColor(void) {
 
     self.tabs.selectedSegmentIndex = 0;
 
-    self.tabs.backgroundColor =
-        K1CardColor();
-
-    self.tabs.selectedSegmentTintColor =
-        K1AccentColor();
+    self.tabs.backgroundColor = K1CardColor();
+    self.tabs.selectedSegmentTintColor = K1AccentColor();
 
     self.tabs.translatesAutoresizingMaskIntoConstraints = NO;
 
@@ -227,9 +226,7 @@ static UIColor *K1MutedColor(void) {
     self.scrollView =
         [[UIScrollView alloc] init];
 
-    self.scrollView.translatesAutoresizingMaskIntoConstraints =
-        NO;
-
+    self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     self.scrollView.showsVerticalScrollIndicator = NO;
     self.scrollView.alwaysBounceVertical = YES;
 
@@ -260,12 +257,8 @@ static UIColor *K1MutedColor(void) {
         UILayoutConstraintAxisVertical;
 
     self.stack.spacing = 12.0;
-
-    self.stack.alignment =
-        UIStackViewAlignmentFill;
-
-    self.stack.translatesAutoresizingMaskIntoConstraints =
-        NO;
+    self.stack.alignment = UIStackViewAlignmentFill;
+    self.stack.translatesAutoresizingMaskIntoConstraints = NO;
 
     [self.scrollView addSubview:self.stack];
 
@@ -303,12 +296,10 @@ static UIColor *K1MutedColor(void) {
         K1PanelColor();
 
     self.miniPanel.layer.cornerRadius = 18.0;
-
     self.miniPanel.layer.borderWidth = 1.0;
 
     self.miniPanel.layer.borderColor =
-        [UIColor colorWithWhite:1.0
-                          alpha:0.12].CGColor;
+        [UIColor colorWithWhite:1.0 alpha:0.12].CGColor;
 
     self.miniPanel.layer.shadowColor =
         UIColor.blackColor.CGColor;
@@ -324,6 +315,9 @@ static UIColor *K1MutedColor(void) {
 
     self.miniLogoImageView =
         [[UIImageView alloc] init];
+
+    self.miniLogoImageView.backgroundColor =
+        K1CardColor();
 
     self.miniLogoImageView.contentMode =
         UIViewContentModeScaleAspectFill;
@@ -351,16 +345,17 @@ static UIColor *K1MutedColor(void) {
     UIButton *restore =
         [self makeButton:@"⌃"];
 
-    restore.accessibilityLabel =
-        @"Restore";
-
     restore.tag = 501;
+    restore.accessibilityLabel = @"Restore";
 
     [restore addTarget:self
                 action:@selector(toggleMinimize)
       forControlEvents:UIControlEventTouchUpInside];
 
     [self.miniPanel addSubview:restore];
+
+    [self loadImageFromURL:K1LogoURL
+                 intoImageView:self.miniLogoImageView];
 }
 
 #pragma mark - Layout
@@ -370,26 +365,26 @@ static UIColor *K1MutedColor(void) {
     if (self.minimized)
         return;
 
-    CGFloat screenWidth =
+    CGFloat width =
         CGRectGetWidth(self.view.bounds);
 
-    CGFloat screenHeight =
+    CGFloat height =
         CGRectGetHeight(self.view.bounds);
 
-    CGFloat width =
-        screenWidth * 0.80;
+    if (width <= 0 || height <= 0)
+        return;
 
-    CGFloat height =
-        screenHeight * 0.80;
+    CGFloat panelWidth = width * 0.80;
+    CGFloat panelHeight = height * 0.80;
 
     CGFloat x =
-        (screenWidth - width) / 2.0;
+        (width - panelWidth) / 2.0;
 
     CGFloat y =
-        (screenHeight - height) / 2.0;
+        (height - panelHeight) / 2.0;
 
     self.mainPanel.frame =
-        CGRectMake(x, y, width, height);
+        CGRectMake(x, y, panelWidth, panelHeight);
 
     self.logoImageView.frame =
         CGRectMake(16.0, 16.0, 48.0, 48.0);
@@ -397,14 +392,14 @@ static UIColor *K1MutedColor(void) {
     self.titleLabel.frame =
         CGRectMake(76.0,
                    16.0,
-                   width - 145.0,
+                   panelWidth - 145.0,
                    48.0);
 
     UIButton *minimize =
         [self.mainPanel viewWithTag:500];
 
     minimize.frame =
-        CGRectMake(width - 58.0,
+        CGRectMake(panelWidth - 58.0,
                    16.0,
                    42.0,
                    42.0);
@@ -419,6 +414,12 @@ static UIColor *K1MutedColor(void) {
     UIEdgeInsets safe =
         self.view.safeAreaInsets;
 
+    CGFloat screenWidth =
+        CGRectGetWidth(self.view.bounds);
+
+    CGFloat screenHeight =
+        CGRectGetHeight(self.view.bounds);
+
     CGFloat x = 0.0;
     CGFloat y = 0.0;
 
@@ -430,31 +431,20 @@ static UIColor *K1MutedColor(void) {
             break;
 
         case K1MinimizeTopRight:
-            x = CGRectGetWidth(self.view.bounds)
-                - width
-                - padding;
-
+            x = screenWidth - width - padding;
             y = safe.top + padding;
             break;
 
         case K1MinimizeBottomLeft:
             x = padding;
-
-            y = CGRectGetHeight(self.view.bounds)
-                - height
-                - safe.bottom
-                - padding;
+            y = screenHeight - height -
+                safe.bottom - padding;
             break;
 
         case K1MinimizeBottomRight:
-            x = CGRectGetWidth(self.view.bounds)
-                - width
-                - padding;
-
-            y = CGRectGetHeight(self.view.bounds)
-                - height
-                - safe.bottom
-                - padding;
+            x = screenWidth - width - padding;
+            y = screenHeight - height -
+                safe.bottom - padding;
             break;
     }
 
@@ -493,9 +483,7 @@ static UIColor *K1MutedColor(void) {
     [button setTitleColor:K1TextColor()
                  forState:UIControlStateNormal];
 
-    button.backgroundColor =
-        K1CardColor();
-
+    button.backgroundColor = K1CardColor();
     button.layer.cornerRadius = 11.0;
 
     button.titleLabel.font =
@@ -517,7 +505,6 @@ static UIColor *K1MutedColor(void) {
 
     [UIView animateWithDuration:0.10
                      animations:^{
-
         button.transform =
             CGAffineTransformMakeScale(1.07, 1.07);
     }];
@@ -531,19 +518,18 @@ static UIColor *K1MutedColor(void) {
           initialSpringVelocity:0.5
                         options:UIViewAnimationOptionCurveEaseOut
                      animations:^{
-
         button.transform =
             CGAffineTransformIdentity;
-
     } completion:nil];
 }
 
-#pragma mark - Logo
+#pragma mark - Image Loading
 
-- (void)loadLogo {
+- (void)loadImageFromURL:(NSString *)urlString
+          intoImageView:(UIImageView *)imageView {
 
     NSURL *url =
-        [NSURL URLWithString:K1LogoURL];
+        [NSURL URLWithString:urlString];
 
     if (!url)
         return;
@@ -564,11 +550,8 @@ static UIColor *K1MutedColor(void) {
         if (!image)
             return;
 
-        dispatch_async(
-            dispatch_get_main_queue(), ^{
-
-            self.logoImageView.image = image;
-            self.miniLogoImageView.image = image;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            imageView.image = image;
         });
     }];
 
@@ -605,7 +588,6 @@ static UIColor *K1MutedColor(void) {
         [self.stack.arrangedSubviews copy];
 
     for (UIView *view in views) {
-
         [self.stack removeArrangedSubview:view];
         [view removeFromSuperview];
     }
@@ -617,8 +599,7 @@ static UIColor *K1MutedColor(void) {
 
     [self clearContent];
 
-    UIView *card =
-        [self card];
+    UIView *card = [self card];
 
     [self.stack addArrangedSubview:card];
 
@@ -632,8 +613,7 @@ static UIColor *K1MutedColor(void) {
                 size:14.0
               weight:UIFontWeightRegular];
 
-    subtitle.textColor =
-        K1MutedColor();
+    subtitle.textColor = K1MutedColor();
 
     title.translatesAutoresizingMaskIntoConstraints = NO;
     subtitle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -671,8 +651,7 @@ static UIColor *K1MutedColor(void) {
 
     [self clearContent];
 
-    UIView *card =
-        [self card];
+    UIView *card = [self card];
 
     [self.stack addArrangedSubview:card];
 
@@ -701,11 +680,8 @@ static UIColor *K1MutedColor(void) {
                 size:13.0
               weight:UIFontWeightMedium];
 
-    address.textColor =
-        K1MutedColor();
-
+    address.textColor = K1MutedColor();
     address.alpha = 0.0;
-
     address.translatesAutoresizingMaskIntoConstraints = NO;
 
     [card addSubview:address];
@@ -714,27 +690,32 @@ static UIColor *K1MutedColor(void) {
         [[UITextField alloc] init];
 
     input.delegate = self;
+    input.placeholder = @"Enter amount";
+    input.textColor = K1TextColor();
 
-    input.placeholder =
-        @"Enter amount";
-
-    input.textColor =
-        K1TextColor();
+    input.attributedPlaceholder =
+        [[NSAttributedString alloc]
+            initWithString:@"Enter amount"
+                attributes:@{
+                    NSForegroundColorAttributeName:
+                        [K1MutedColor()
+                            colorWithAlphaComponent:0.8]
+                }];
 
     input.font =
         [UIFont systemFontOfSize:15.0];
 
     input.backgroundColor =
-        [UIColor colorWithWhite:0.0
-                          alpha:0.18];
+        [UIColor colorWithWhite:0.0 alpha:0.18];
 
     input.layer.cornerRadius = 11.0;
 
+    // Default keyboard has an actual Return/Send key.
     input.keyboardType =
-        UIKeyboardTypeNumberPad;
+        UIKeyboardTypeDefault;
 
     input.returnKeyType =
-        UIReturnKeyDone;
+        UIReturnKeySend;
 
     UIView *padding =
         [[UIView alloc]
@@ -757,9 +738,7 @@ static UIColor *K1MutedColor(void) {
     [setButton setTitleColor:UIColor.whiteColor
                     forState:UIControlStateNormal];
 
-    setButton.backgroundColor =
-        K1AccentColor();
-
+    setButton.backgroundColor = K1AccentColor();
     setButton.layer.cornerRadius = 11.0;
 
     setButton.translatesAutoresizingMaskIntoConstraints = NO;
@@ -771,7 +750,6 @@ static UIColor *K1MutedColor(void) {
     [card addSubview:setButton];
 
     [NSLayoutConstraint activateConstraints:@[
-
         [parsnip.topAnchor
             constraintEqualToAnchor:card.topAnchor
                            constant:7.0],
@@ -836,30 +814,43 @@ static UIColor *K1MutedColor(void) {
 
     __block BOOL expanded = NO;
 
-    [parsnip addAction:
-        [UIAction actionWithHandler:^(__unused UIAction *action) {
+    [parsnip addTarget:self
+                action:@selector(parsnipPressed:)
+      forControlEvents:UIControlEventTouchUpInside];
 
-        expanded = !expanded;
+    // Store state using the button's tag.
+    parsnip.tag = 700;
 
-        NSString *arrow =
-            expanded ? @"▾" : @"▸";
-
-        [parsnip setTitle:
-            [NSString stringWithFormat:
-                @"%@   Parsnip seed", arrow]
-                  forState:UIControlStateNormal];
-
-        [UIView animateWithDuration:0.22
-                         animations:^{
-
-            address.alpha =
-                expanded ? 1.0 : 0.0;
-        }];
-
-    }]
-    forControlEvents:UIControlEventTouchUpInside];
+    // Address starts hidden.
+    address.tag = 701;
 
     [self addShine:card];
+}
+
+- (void)parsnipPressed:(UIButton *)button {
+
+    UILabel *address =
+        [self.stack viewWithTag:701];
+
+    if (!address)
+        return;
+
+    BOOL expanded =
+        address.alpha < 0.5;
+
+    NSString *arrow =
+        expanded ? @"▾" : @"▸";
+
+    [button setTitle:
+        [NSString stringWithFormat:@"%@   Parsnip seed",
+                                   arrow]
+            forState:UIControlStateNormal];
+
+    [UIView animateWithDuration:0.22
+                     animations:^{
+        address.alpha =
+            expanded ? 1.0 : 0.0;
+    }];
 }
 
 - (void)setPressed:(UIButton *)button {
@@ -867,15 +858,13 @@ static UIColor *K1MutedColor(void) {
     [self buttonPressedDown:button];
 
     [UIView animateWithDuration:0.30
-                          delay:0
+                          delay:0.0
          usingSpringWithDamping:0.45
           initialSpringVelocity:0.5
-                        options:0
+                        options:UIViewAnimationOptionCurveEaseOut
                      animations:^{
-
         button.transform =
             CGAffineTransformIdentity;
-
     } completion:nil];
 }
 
@@ -885,8 +874,8 @@ static UIColor *K1MutedColor(void) {
 
     [self clearContent];
 
-    UIView *positionCard =
-        [self card];
+    // Position
+    UIView *positionCard = [self card];
 
     [self.stack addArrangedSubview:positionCard];
 
@@ -951,8 +940,8 @@ static UIColor *K1MutedColor(void) {
             constraintEqualToConstant:38.0]
     ]];
 
-    UIView *themeCard =
-        [self card];
+    // Themes
+    UIView *themeCard = [self card];
 
     [self.stack addArrangedSubview:themeCard];
 
@@ -1016,8 +1005,8 @@ static UIColor *K1MutedColor(void) {
             constraintEqualToConstant:38.0]
     ]];
 
-    UIView *recordCard =
-        [self card];
+    // Recording
+    UIView *recordCard = [self card];
 
     [self.stack addArrangedSubview:recordCard];
 
@@ -1073,31 +1062,52 @@ static UIColor *K1MutedColor(void) {
     self.themeIndex =
         sender.selectedSegmentIndex;
 
-    UIColor *color;
+    UIColor *panelColor;
 
     if (self.themeIndex == 1) {
 
-        color =
+        panelColor =
             [UIColor colorWithRed:0.12
                             green:0.055
                              blue:0.18
                             alpha:1.0];
 
+        [self loadImageFromURL:K1StrongestURL
+                    intoImageView:self.logoImageView];
+
+        [self loadImageFromURL:K1StrongestURL
+                    intoImageView:self.miniLogoImageView];
+
     } else if (self.themeIndex == 2) {
 
-        color =
+        panelColor =
             [UIColor colorWithRed:0.045
                             green:0.12
                              blue:0.10
                             alpha:1.0];
 
+        [self loadImageFromURL:K1LazyGeniusURL
+                    intoImageView:self.logoImageView];
+
+        [self loadImageFromURL:K1LazyGeniusURL
+                    intoImageView:self.miniLogoImageView];
+
     } else {
 
-        color = K1PanelColor();
+        panelColor = K1PanelColor();
+
+        [self loadImageFromURL:K1LogoURL
+                    intoImageView:self.logoImageView];
+
+        [self loadImageFromURL:K1LogoURL
+                    intoImageView:self.miniLogoImageView];
     }
 
-    self.mainPanel.backgroundColor = color;
-    self.miniPanel.backgroundColor = color;
+    [UIView animateWithDuration:0.25
+                     animations:^{
+        self.mainPanel.backgroundColor = panelColor;
+        self.miniPanel.backgroundColor = panelColor;
+    }];
 }
 
 #pragma mark - Credits
@@ -1116,8 +1126,7 @@ static UIColor *K1MutedColor(void) {
                 size:11.0
               weight:UIFontWeightBold];
 
-    devTitle.textColor =
-        K1MutedColor();
+    devTitle.textColor = K1MutedColor();
 
     UILabel *dev =
         [self label:@"Ales04718"
@@ -1154,15 +1163,14 @@ static UIColor *K1MutedColor(void) {
     UIButton *discord =
         [UIButton buttonWithType:UIButtonTypeSystem];
 
-    [discord setTitle:@"discord.gg/DKdAG9VTjh   ⧉"
-             forState:UIControlStateNormal];
+    [discord setTitle:
+        @"discord.gg/DKdAG9VTjh   ⧉"
+          forState:UIControlStateNormal];
 
     [discord setTitleColor:K1TextColor()
                   forState:UIControlStateNormal];
 
-    discord.backgroundColor =
-        K1CardColor();
-
+    discord.backgroundColor = K1CardColor();
     discord.layer.cornerRadius = 17.0;
 
     discord.titleLabel.font =
@@ -1174,6 +1182,8 @@ static UIColor *K1MutedColor(void) {
       forControlEvents:UIControlEventTouchUpInside];
 
     [self.stack addArrangedSubview:discord];
+
+    discord.translatesAutoresizingMaskIntoConstraints = NO;
 
     [discord.heightAnchor
         constraintEqualToConstant:58.0].active = YES;
@@ -1189,23 +1199,21 @@ static UIColor *K1MutedColor(void) {
 
     [UIView animateWithDuration:0.12
                      animations:^{
-
         button.transform =
             CGAffineTransformMakeScale(1.05, 1.05);
-
-    } completion:^(BOOL finished) {
+    }
+                     completion:^(BOOL finished) {
 
         [UIView animateWithDuration:0.30
-                              delay:0
+                              delay:0.0
              usingSpringWithDamping:0.45
               initialSpringVelocity:0.4
-                            options:0
+                            options:UIViewAnimationOptionCurveEaseOut
                          animations:^{
-
             button.transform =
                 CGAffineTransformIdentity;
-
-        } completion:nil];
+        }
+                         completion:nil];
     }];
 
     dispatch_after(
@@ -1215,7 +1223,7 @@ static UIColor *K1MutedColor(void) {
 
         [button setTitle:
             @"discord.gg/DKdAG9VTjh   ⧉"
-                  forState:UIControlStateNormal];
+              forState:UIControlStateNormal];
     });
 }
 
@@ -1227,6 +1235,8 @@ static UIColor *K1MutedColor(void) {
 
         self.minimized = NO;
 
+        [self layoutMainPanel];
+
         self.mainPanel.hidden = NO;
         self.mainPanel.alpha = 0.0;
 
@@ -1234,7 +1244,7 @@ static UIColor *K1MutedColor(void) {
             CGAffineTransformMakeScale(0.90, 0.90);
 
         [UIView animateWithDuration:0.40
-                              delay:0
+                              delay:0.0
              usingSpringWithDamping:0.72
               initialSpringVelocity:0.45
                             options:UIViewAnimationOptionCurveEaseOut
@@ -1247,7 +1257,8 @@ static UIColor *K1MutedColor(void) {
 
             self.miniPanel.alpha = 0.0;
 
-        } completion:^(BOOL finished) {
+        }
+                         completion:^(BOOL finished) {
 
             self.miniPanel.hidden = YES;
             self.miniPanel.alpha = 1.0;
@@ -1266,7 +1277,7 @@ static UIColor *K1MutedColor(void) {
             CGAffineTransformMakeScale(0.75, 0.75);
 
         [UIView animateWithDuration:0.38
-                              delay:0
+                              delay:0.0
              usingSpringWithDamping:0.70
               initialSpringVelocity:0.45
                             options:UIViewAnimationOptionCurveEaseInOut
@@ -1277,7 +1288,8 @@ static UIColor *K1MutedColor(void) {
             self.miniPanel.transform =
                 CGAffineTransformIdentity;
 
-        } completion:^(BOOL finished) {
+        }
+                         completion:^(BOOL finished) {
 
             self.mainPanel.hidden = YES;
         }];
@@ -1291,9 +1303,7 @@ static UIColor *K1MutedColor(void) {
     UIView *view =
         [[UIView alloc] init];
 
-    view.backgroundColor =
-        K1CardColor();
-
+    view.backgroundColor = K1CardColor();
     view.layer.cornerRadius = 17.0;
 
     view.layer.borderWidth = 1.0;
@@ -1352,7 +1362,8 @@ static UIColor *K1MutedColor(void) {
                     200.0,
                     100.0);
 
-    [view.layer insertSublayer:gradient atIndex:0];
+    [view.layer insertSublayer:gradient
+                        atIndex:0];
 
     CABasicAnimation *animation =
         [CABasicAnimation animationWithKeyPath:
@@ -1372,6 +1383,11 @@ static UIColor *K1MutedColor(void) {
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
 
     [textField resignFirstResponder];
+
+    [UIView animateWithDuration:0.20
+                     animations:^{
+        textField.alpha = 0.0;
+    }];
 
     return YES;
 }
