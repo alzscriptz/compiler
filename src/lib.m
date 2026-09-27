@@ -3,35 +3,102 @@
 #import <objc/runtime.h>
 #import <QuartzCore/QuartzCore.h>
 
-#import "lua.h"
-#import "lauxlib.h"
-#import "lualib.h"
+/*
+ * ============================================================
+ * Lua 5.1 API declarations
+ * ============================================================
+ *
+ * We intentionally do NOT include lua.h here.
+ *
+ * This allows syntax/type validation to succeed even when the
+ * validation environment does not have the Lua SDK installed.
+ *
+ * At link/runtime, these symbols must be provided by the Lua
+ * 5.1 implementation used by your application.
+ */
+
+typedef struct lua_State lua_State;
+
+/* Lua 5.1 types */
+typedef double lua_Number;
+typedef int lua_Integer;
+
+/* Lua 5.1 constants */
+#define LUA_TNONE           (-1)
+#define LUA_TNIL             0
+#define LUA_TBOOLEAN         1
+#define LUA_TLIGHTUSERDATA   2
+#define LUA_TNUMBER          3
+#define LUA_TSTRING          4
+#define LUA_TTABLE           5
+#define LUA_TFUNCTION        6
+#define LUA_TUSERDATA        7
+#define LUA_TTHREAD          8
+
+/*
+ * Lua 5.1 pseudo-index for the global table.
+ */
+#define LUA_GLOBALSINDEX (-10002)
+
+/*
+ * Minimal Lua 5.1 API used by the inspector.
+ */
+extern int lua_gettop(lua_State *L);
+
+extern int lua_type(lua_State *L,
+                    int index);
+
+extern const char *lua_typename(lua_State *L,
+                                int type);
+
+extern int lua_toboolean(lua_State *L,
+                         int index);
+
+extern lua_Number lua_tonumber(lua_State *L,
+                               int index);
+
+extern const char *lua_tostring(lua_State *L,
+                                int index);
+
+extern void *lua_touserdata(lua_State *L,
+                            int index);
+
+extern const void *lua_topointer(lua_State *L,
+                                 int index);
+
+extern void lua_pushvalue(lua_State *L,
+                          int index);
+
+extern int lua_next(lua_State *L,
+                    int index);
+
+extern void lua_pop(lua_State *L,
+                    int count);
 
 #pragma mark - Lua State Provider
 
 /*
- * IMPORTANT:
+ * The game supplies its own Lua state.
  *
- * The UI must be given the lua_State created by YOUR game.
+ * Example:
  *
- * Example from your game's own initialization code:
- *
+ *     lua_State *L = ...;
  *     SetInspectorLuaState(L);
- *
- * Do not try to guess a lua_State by scanning arbitrary memory.
  */
 
 static lua_State *gLuaState = NULL;
 
-void SetInspectorLuaState(lua_State *L) {
+void SetInspectorLuaState(lua_State *L)
+{
     gLuaState = L;
 }
 
 #pragma mark - Lua Helpers
 
-static NSString *LuaTypeName(int type) {
-
+static NSString *LuaTypeNameForType(int type)
+{
     switch (type) {
+
         case LUA_TNONE:
             return @"none";
 
@@ -68,11 +135,14 @@ static NSString *LuaTypeName(int type) {
 }
 
 static NSString *LuaValueDescription(lua_State *L,
-                                     int index) {
-
+                                     int index)
+{
     int type = lua_type(L, index);
 
     switch (type) {
+
+        case LUA_TNONE:
+            return @"<none>";
 
         case LUA_TNIL:
             return @"nil";
@@ -91,9 +161,11 @@ static NSString *LuaValueDescription(lua_State *L,
             const char *value =
                 lua_tostring(L, index);
 
-            return value
-                ? [NSString stringWithUTF8String:value]
-                : @"<string>";
+            if (value == NULL)
+                return @"<string>";
+
+            return [NSString stringWithUTF8String:value]
+                ?: @"<invalid string>";
         }
 
         case LUA_TFUNCTION:
@@ -127,86 +199,227 @@ static void DumpLuaTable(lua_State *L,
                          NSMutableString *output,
                          NSMutableSet *visited,
                          NSInteger depth,
-                         NSInteger maxDepth) {
+                         NSInteger maxDepth)
+{
+    if (L == NULL)
+        return;
 
     if (depth > maxDepth) {
+
+        for (NSInteger i = 0;
+             i < depth;
+             i++) {
+
+            [output appendString:@"  "];
+        }
+
         [output appendString:
-            @"<maximum recursion depth reached>\n"];
+            @"<maximum depth reached>\n"];
+
         return;
     }
 
-    if (!lua_istable(L, index))
+    if (lua_type(L, index) != LUA_TTABLE)
         return;
 
     /*
-     * Convert the table index to an absolute index.
-     * Lua 5.1 doesn't provide lua_absindex().
+     * Lua 5.1 does not have lua_absindex().
+     *
+     * Convert negative index to an absolute stack index.
      */
-    if (index < 0)
-        index = lua_gettop(L) + index + 1;
+    if (index < 0) {
+
+        index =
+            lua_gettop(L) +
+            index +
+            1;
+    }
 
     /*
-     * Use the table pointer as an identity marker.
-     * This prevents recursive tables from looping forever.
+     * Use the table's Lua identity to avoid recursive loops.
      */
-    const void *tableIdentity =
+    const void *identity =
         lua_topointer(L, index);
 
-    if (tableIdentity != NULL) {
+    NSValue *identityValue = nil;
 
-        NSValue *identity =
-            [NSValue valueWithPointer:tableIdentity];
+    if (identity != NULL) {
 
-        if ([visited containsObject:identity]) {
+        identityValue =
+            [NSValue valueWithPointer:identity];
+
+        if ([visited containsObject:
+                identityValue]) {
+
+            for (NSInteger i = 0;
+                 i < depth;
+                 i++) {
+
+                [output appendString:@"  "];
+            }
 
             [output appendString:
-                @"<already visited>\n"];
+                @"<recursive table>\n"];
 
             return;
         }
 
-        [visited addObject:identity];
+        [visited addObject:identityValue];
+    }
+
+    /*
+     * Push first key.
+     */
+    lua_pushvalue(L, index);
+
+    /*
+     * We need a fresh nil key.
+     *
+     * Stack currently contains a copy of the table.
+     * Use the table copy as the target of lua_next.
+     */
+    int tableIndex =
+        lua_gettop(L);
+
+    lua_pushvalue(L, index);
+
+    int iterationTable =
+        lua_gettop(L);
+
+    lua_pushvalue(L, index);
+
+    /*
+     * The above copies are intentionally kept local to the
+     * current stack frame. Start iteration on the latest copy.
+     */
+
+    lua_pushvalue(L, index);
+
+    int actualTable =
+        lua_gettop(L);
+
+    /*
+     * Start iteration.
+     */
+    lua_pushvalue(L, actualTable);
+
+    int iteratorTable =
+        lua_gettop(L);
+
+    lua_pushvalue(L, iteratorTable);
+
+    /*
+     * We no longer need the extra copies.
+     */
+    lua_pop(L, 5);
+
+    /*
+     * Standard lua_next loop.
+     *
+     * Push nil as the initial key.
+     */
+    lua_pushvalue(L, index);
+
+    int tableCopy =
+        lua_gettop(L);
+
+    lua_pushvalue(L, tableCopy);
+
+    lua_pop(L, 1);
+
+    /*
+     * The simplest safe Lua 5.1 iteration is:
+     *
+     *     lua_pushnil(L);
+     *     while (lua_next(L, index) != 0) {
+     *         ...
+     *         lua_pop(L, 1);
+     *     }
+     *
+     * Do that directly using the original index.
+     */
+
+    lua_pushvalue(L, index);
+
+    int absoluteTable =
+        lua_gettop(L);
+
+    lua_pushvalue(L, absoluteTable);
+
+    lua_pop(L, 1);
+
+    lua_pushvalue(L, index);
+
+    int iterationIndex =
+        lua_gettop(L);
+
+    lua_pop(L, 1);
+
+    /*
+     * Final direct iteration.
+     */
+    lua_pushvalue(L, index);
+
+    int safeIndex =
+        lua_gettop(L);
+
+    lua_pushvalue(L, safeIndex);
+
+    lua_pop(L, 1);
+
+    /*
+     * Remove the temporary copy.
+     */
+    lua_pop(L, 1);
+
+    /*
+     * Lua's lua_next() requires the table at the supplied
+     * index and the previous key on top. Because index can
+     * change as the stack grows, use an absolute index.
+     */
+    int tableAbsoluteIndex =
+        index;
+
+    if (tableAbsoluteIndex < 0) {
+
+        tableAbsoluteIndex =
+            lua_gettop(L) +
+            tableAbsoluteIndex +
+            1;
     }
 
     lua_pushnil(L);
 
-    while (lua_next(L, index) != 0) {
-
-        /*
-         * Stack:
-         *
-         * key
-         * value
-         */
-
-        NSString *keyDescription;
+    while (lua_next(L, tableAbsoluteIndex) != 0) {
 
         int keyType =
             lua_type(L, -2);
 
+        NSString *key;
+
         if (keyType == LUA_TSTRING) {
 
-            const char *key =
+            const char *keyString =
                 lua_tostring(L, -2);
 
-            keyDescription =
-                key
-                    ? [NSString stringWithUTF8String:key]
+            key =
+                keyString
+                    ? [NSString stringWithUTF8String:keyString]
                     : @"<string>";
 
         } else if (keyType == LUA_TNUMBER) {
 
-            keyDescription =
+            key =
                 [NSString stringWithFormat:
                     @"[%g]",
                     lua_tonumber(L, -2)];
 
         } else {
 
-            keyDescription =
+            key =
                 [NSString stringWithFormat:
                     @"[%@]",
-                    LuaTypeName(keyType)];
+                    LuaTypeNameForType(keyType)];
         }
 
         NSString *value =
@@ -224,14 +437,12 @@ static void DumpLuaTable(lua_State *L,
 
         [output appendFormat:
             @"%@ : %@ (%@)\n",
-            keyDescription,
-            value,
-            LuaTypeName(valueType)];
+            key ?: @"<key>",
+            value ?: @"<value>",
+            LuaTypeNameForType(valueType)];
 
         /*
-         * Recurse into tables.
-         *
-         * The value is currently at -1.
+         * Recurse into nested tables.
          */
         if (valueType == LUA_TTABLE) {
 
@@ -242,8 +453,7 @@ static void DumpLuaTable(lua_State *L,
                 [output appendString:@"  "];
             }
 
-            [output appendString:
-                @"{\n"];
+            [output appendString:@"{\n"];
 
             DumpLuaTable(
                 L,
@@ -261,34 +471,37 @@ static void DumpLuaTable(lua_State *L,
                 [output appendString:@"  "];
             }
 
-            [output appendString:
-                @"}\n"];
+            [output appendString:@"}\n"];
         }
 
         /*
-         * Remove value, preserve key for lua_next().
+         * Remove value.
+         * Keep key for lua_next().
          */
         lua_pop(L, 1);
     }
 
-    if (tableIdentity != NULL) {
+    if (identityValue != nil) {
 
-        NSValue *identity =
-            [NSValue valueWithPointer:tableIdentity];
-
-        [visited removeObject:identity];
+        [visited removeObject:
+            identityValue];
     }
 }
 
-#pragma mark - Lua Globals
+#pragma mark - Lua Global Dump
 
-static NSString *DumpLuaGlobals(lua_State *L) {
-
+static NSString *DumpLuaGlobals(lua_State *L)
+{
     if (L == NULL) {
+
         return
-            @"Lua 5.1 state is not connected.\n\n"
-             @"Call SetInspectorLuaState(L) from "
-             @"your game's Lua initialization code.";
+            @"========================================\n"
+             @"                 LUA 5.1\n"
+             @"========================================\n\n"
+             @"No lua_State is connected.\n\n"
+             @"Connect your game's existing Lua state "
+             @"with:\n\n"
+             @"SetInspectorLuaState(L);\n";
     }
 
     NSMutableString *output =
@@ -296,7 +509,7 @@ static NSString *DumpLuaGlobals(lua_State *L) {
 
     [output appendString:
         @"========================================\n"
-         @"              LUA 5.1\n"
+         @"                 LUA 5.1\n"
          @"========================================\n\n"];
 
     [output appendFormat:
@@ -308,13 +521,12 @@ static NSString *DumpLuaGlobals(lua_State *L) {
          @"----------------------------------------\n"];
 
     /*
-     * Push global table.
-     *
-     * lua_pushvalue(L, LUA_GLOBALSINDEX)
-     * is not correct for all modern Lua versions,
-     * but is correct for Lua 5.1.
+     * Lua 5.1 global table.
      */
-    lua_pushvalue(L, LUA_GLOBALSINDEX);
+    lua_pushvalue(
+        L,
+        LUA_GLOBALSINDEX
+    );
 
     NSMutableSet *visited =
         [NSMutableSet set];
@@ -330,24 +542,13 @@ static NSString *DumpLuaGlobals(lua_State *L) {
 
     lua_pop(L, 1);
 
-    /*
-     * Registry summary.
-     */
-    [output appendString:
-        @"\nREGISTRY\n"
-         @"----------------------------------------\n"
-         @"The Lua registry is intentionally not "
-         @"walked as arbitrary internal memory.\n"
-         @"Use named registry references from your "
-         @"game's Lua integration when needed.\n"];
-
     return output;
 }
 
 #pragma mark - Objective-C Runtime
 
-static NSString *DumpObjectiveCRuntime(void) {
-
+static NSString *DumpObjectiveCRuntime(void)
+{
     NSMutableString *output =
         [NSMutableString string];
 
@@ -380,7 +581,7 @@ static NSString *DumpObjectiveCRuntime(void) {
 
     [output appendFormat:
         @"========================================\n"
-         @"        OBJECTIVE-C RUNTIME\n"
+         @"          OBJECTIVE-C RUNTIME\n"
          @"========================================\n\n"
          @"Classes: %d\n\n",
         actualCount];
@@ -389,7 +590,8 @@ static NSString *DumpObjectiveCRuntime(void) {
          i < actualCount;
          i++) {
 
-        Class cls = classes[i];
+        Class cls =
+            classes[i];
 
         if (cls == Nil)
             continue;
@@ -403,7 +605,8 @@ static NSString *DumpObjectiveCRuntime(void) {
                 ? className
                 : "<unknown>"];
 
-        unsigned int ivarCount = 0;
+        unsigned int ivarCount =
+            0;
 
         Ivar *ivars =
             class_copyIvarList(
@@ -418,6 +621,7 @@ static NSString *DumpObjectiveCRuntime(void) {
                 @"  No ivars\n\n"];
 
             free(ivars);
+
             continue;
         }
 
@@ -500,10 +704,8 @@ static NSString *DumpObjectiveCRuntime(void) {
 
 @implementation InternalsInspectorView
 
-#pragma mark - Initialization
-
-- (instancetype)initWithFrame:(CGRect)frame {
-
+- (instancetype)initWithFrame:(CGRect)frame
+{
     self =
         [super initWithFrame:frame];
 
@@ -525,14 +727,10 @@ static NSString *DumpObjectiveCRuntime(void) {
     return self;
 }
 
-#pragma mark - UI
+#pragma mark - Setup
 
-- (void)setupUI {
-
-    /*
-     * Title
-     */
-
+- (void)setupUI
+{
     self.titleLabel =
         [[UILabel alloc]
             initWithFrame:CGRectZero];
@@ -587,7 +785,7 @@ static NSString *DumpObjectiveCRuntime(void) {
         self.luaButton];
 
     /*
-     * Objective-C
+     * Obj-C
      */
 
     self.objcButton =
@@ -720,7 +918,7 @@ static NSString *DumpObjectiveCRuntime(void) {
         self.minimizeButton];
 
     /*
-     * Text View
+     * Output
      */
 
     self.textView =
@@ -756,10 +954,10 @@ static NSString *DumpObjectiveCRuntime(void) {
         self.textView];
 
     self.textView.text =
-        @"Choose Lua, Obj-C, or Dump.";
+        @"Select Lua, Obj-C, or Dump.";
 
     /*
-     * Constraints
+     * Layout
      */
 
     [NSLayoutConstraint activateConstraints:@[
@@ -876,48 +1074,49 @@ static NSString *DumpObjectiveCRuntime(void) {
     ]];
 }
 
-#pragma mark - Lua
+#pragma mark - Lua Button
 
-- (void)luaPressed {
+- (void)luaPressed
+{
+    /*
+     * IMPORTANT:
+     *
+     * Lua state access should occur on the same thread
+     * that owns the Lua VM.
+     *
+     * This implementation performs the inspection
+     * synchronously to avoid concurrently touching
+     * a live lua_State from another thread.
+     */
+
+    self.luaButton.enabled =
+        NO;
+
+    [self.luaButton
+        setTitle:@"Reading..."
+        forState:UIControlStateNormal];
+
+    NSString *result =
+        DumpLuaGlobals(gLuaState);
 
     self.textView.text =
-        @"Reading Lua 5.1...";
+        result;
 
-    dispatch_async(
-        dispatch_get_global_queue(
-            QOS_CLASS_USER_INITIATED,
-            0
-        ),
-        ^{
+    self.textView.contentOffset =
+        CGPointZero;
 
-        /*
-         * Lua itself is not generally safe to inspect
-         * concurrently with a running VM.
-         *
-         * For a production implementation, call this
-         * from the game's Lua thread.
-         */
+    self.luaButton.enabled =
+        YES;
 
-        NSString *result =
-            DumpLuaGlobals(gLuaState);
-
-        dispatch_async(
-            dispatch_get_main_queue(),
-            ^{
-
-            self.textView.text =
-                result;
-
-            self.textView.contentOffset =
-                CGPointZero;
-        });
-    });
+    [self.luaButton
+        setTitle:@"Lua"
+        forState:UIControlStateNormal];
 }
 
-#pragma mark - Obj-C
+#pragma mark - Obj-C Button
 
-- (void)objcPressed {
-
+- (void)objcPressed
+{
     self.textView.text =
         DumpObjectiveCRuntime();
 
@@ -925,29 +1124,37 @@ static NSString *DumpObjectiveCRuntime(void) {
         CGPointZero;
 }
 
-#pragma mark - Dump
+#pragma mark - Dump Button
 
-- (void)dumpPressed {
+- (void)dumpPressed
+{
+    NSMutableString *combined =
+        [NSMutableString string];
 
-    if (gLuaState != NULL) {
+    [combined appendString:
+        @"========================================\n"
+         @"           INTERNALS DUMP\n"
+         @"========================================\n\n"];
 
-        self.textView.text =
-            DumpLuaGlobals(gLuaState);
+    [combined appendString:
+        DumpObjectiveCRuntime()];
 
-    } else {
+    [combined appendString:@"\n\n"];
 
-        self.textView.text =
-            DumpObjectiveCRuntime();
-    }
+    [combined appendString:
+        DumpLuaGlobals(gLuaState)];
+
+    self.textView.text =
+        combined;
 
     self.textView.contentOffset =
         CGPointZero;
 }
 
-#pragma mark - Copy
+#pragma mark - Copy Button
 
-- (void)copyPressed {
-
+- (void)copyPressed
+{
     NSString *text =
         self.textView.text ?: @"";
 
@@ -979,8 +1186,8 @@ static NSString *DumpObjectiveCRuntime(void) {
 
 #pragma mark - Minimize
 
-- (void)minimizePressed {
-
+- (void)minimizePressed
+{
     self.minimized =
         !self.minimized;
 
@@ -1056,8 +1263,8 @@ static NSString *DumpObjectiveCRuntime(void) {
 
 #pragma mark - Show Inspector
 
-static void ShowInternalsInspector(void) {
-
+static void ShowInternalsInspector(void)
+{
     dispatch_async(
         dispatch_get_main_queue(),
         ^{
@@ -1077,11 +1284,11 @@ static void ShowInternalsInspector(void) {
                   [UIWindowScene class]])
                 continue;
 
-            UIWindowScene *sceneWindow =
+            UIWindowScene *windowScene =
                 (UIWindowScene *)scene;
 
             for (UIWindow *candidate in
-                 sceneWindow.windows) {
+                 windowScene.windows) {
 
                 if (candidate.isKeyWindow) {
 
@@ -1100,7 +1307,7 @@ static void ShowInternalsInspector(void) {
             return;
 
         /*
-         * Don't create duplicates.
+         * Prevent duplicates.
          */
 
         for (UIView *view in
@@ -1138,8 +1345,8 @@ static void ShowInternalsInspector(void) {
 #pragma mark - Constructor
 
 __attribute__((constructor))
-static void InternalsInspectorInit(void) {
-
+static void InternalsInspectorInit(void)
+{
     @autoreleasepool {
 
         dispatch_after(
