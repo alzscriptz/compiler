@@ -1,131 +1,111 @@
+//
+//  RuntimeDumper.m
+//  Single-file authorized runtime inspector
+//
+
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
 #import <dlfcn.h>
 
+#pragma mark - Data
+
+static NSArray *RDClasses;
+static NSArray *RDImages;
+
 #pragma mark - Helpers
 
-static NSString *RDHex(uintptr_t value) {
+static NSString *RDHex(uintptr_t value)
+{
     return [NSString stringWithFormat:@"0x%llX",
             (unsigned long long)value];
 }
 
 static NSString *RDImageForAddress(const void *address,
-                                   uintptr_t *baseOut) {
+                                   uintptr_t *base)
+{
     Dl_info info = {0};
 
-    if (dladdr(address, &info) == 0 || !info.dli_fname) {
+    if (dladdr(address, &info) == 0 || !info.dli_fbase)
         return @"<unknown>";
-    }
 
-    uintptr_t base = (uintptr_t)info.dli_fbase;
+    if (base)
+        *base = (uintptr_t)info.dli_fbase;
 
-    if (baseOut) {
-        *baseOut = base;
-    }
-
-    return [NSString stringWithUTF8String:info.dli_fname]
-        ?: @"<unknown>";
-}
-
-#pragma mark - Library initialization
-
-__attribute__((constructor))
-static void RuntimeDumperInitialize(void) {
-    NSLog(@"[RuntimeDumper] loaded");
-
-    // Initialization for an app you control.
-    // Keep this lightweight; perform collection when requested.
-}
-
-__attribute__((destructor))
-static void RuntimeDumperShutdown(void) {
-    NSLog(@"[RuntimeDumper] unloaded");
+    return info.dli_fname
+        ? [NSString stringWithUTF8String:info.dli_fname]
+        : @"<unknown>";
 }
 
 #pragma mark - Mach-O Images
 
-static NSArray *RDCollectImages(void) {
-    NSMutableArray *images =
-        [NSMutableArray array];
+static NSArray *RDGetImages(void)
+{
+    NSMutableArray *result = [NSMutableArray array];
 
-    uint32_t count =
-        _dyld_image_count();
+    uint32_t count = _dyld_image_count();
 
     for (uint32_t i = 0; i < count; i++) {
-
-        const char *name =
-            _dyld_get_image_name(i);
 
         const struct mach_header *header =
             _dyld_get_image_header(i);
 
-        if (!header) {
+        if (!header)
             continue;
-        }
+
+        const char *name =
+            _dyld_get_image_name(i);
 
         intptr_t slide =
             _dyld_get_image_vmaddr_slide(i);
 
         NSString *path =
-            name
-                ? [NSString stringWithUTF8String:name]
-                : @"<unknown>";
+            name ? [NSString stringWithUTF8String:name]
+                 : @"<unknown>";
 
-        uintptr_t base =
-            (uintptr_t)header;
-
-        [images addObject:@{
-            @"index": @(i),
-            @"name":
-                path.lastPathComponent ?: path,
-            @"path": path,
-            @"base":
-                RDHex(base),
-            @"slide":
+        [result addObject:@{
+            @"name" : path.lastPathComponent ?: path,
+            @"path" : path,
+            @"base" : RDHex((uintptr_t)header),
+            @"slide" :
                 [NSString stringWithFormat:@"%lld",
                  (long long)slide]
         }];
     }
 
-    return images;
+    return result;
 }
 
 #pragma mark - Objective-C Runtime
 
-static NSArray *RDCollectClasses(void) {
-    NSMutableArray *classes =
-        [NSMutableArray array];
+static NSArray *RDGetClasses(void)
+{
+    NSMutableArray *result = [NSMutableArray array];
 
-    int count =
-        objc_getClassList(NULL, 0);
+    int count = objc_getClassList(NULL, 0);
 
-    if (count <= 0) {
-        return classes;
-    }
+    if (count <= 0)
+        return result;
 
-    Class *classList =
+    Class *list =
         (__unsafe_unretained Class *)
         malloc(sizeof(Class) * count);
 
-    if (!classList) {
-        return classes;
-    }
+    if (!list)
+        return result;
 
-    count =
-        objc_getClassList(classList, count);
+    count = objc_getClassList(list, count);
 
     for (int i = 0; i < count; i++) {
 
-        Class cls =
-            classList[i];
+        Class cls = list[i];
 
-        const char *className =
+        const char *name =
             class_getName(cls);
 
-        if (!className) {
+        if (!name)
             continue;
-        }
 
         NSMutableArray *methods =
             [NSMutableArray array];
@@ -133,69 +113,57 @@ static NSArray *RDCollectClasses(void) {
         unsigned int methodCount = 0;
 
         Method *methodList =
-            class_copyMethodList(
-                cls,
-                &methodCount
-            );
+            class_copyMethodList(cls, &methodCount);
 
         for (unsigned int j = 0;
              j < methodCount;
              j++) {
 
-            Method method =
-                methodList[j];
+            Method method = methodList[j];
 
             SEL selector =
                 method_getName(method);
 
-            IMP implementation =
+            IMP imp =
                 method_getImplementation(method);
 
-            if (!selector ||
-                !implementation) {
+            if (!selector || !imp)
                 continue;
-            }
 
             uintptr_t imageBase = 0;
 
             NSString *image =
                 RDImageForAddress(
-                    (const void *)implementation,
+                    (const void *)imp,
                     &imageBase
                 );
 
             uintptr_t address =
-                (uintptr_t)implementation;
+                (uintptr_t)imp;
 
             NSMutableDictionary *entry =
                 [NSMutableDictionary dictionary];
 
             entry[@"name"] =
-                NSStringFromSelector(selector)
-                ?: @"<unknown>";
+                NSStringFromSelector(selector);
 
             entry[@"address"] =
                 RDHex(address);
 
             entry[@"image"] =
-                image ?: @"<unknown>";
+                image;
 
-            if (imageBase != 0 &&
-                address >= imageBase) {
-
+            if (imageBase && address >= imageBase) {
                 entry[@"offset"] =
                     RDHex(address - imageBase);
-            } else {
-                entry[@"offset"] =
-                    @"<unknown>";
             }
 
-            const char *types =
+            const char *encoding =
                 method_getTypeEncoding(method);
 
-            if (types) {
-                entry[@"typeEncoding"] =
-                    [NSString stringWithUTF8String:types];
+            if (encoding) {
+                entry[@"encoding"] =
+                    [NSString stringWithUTF8String:encoding];
             }
 
             [methods addObject:entry];
@@ -203,12 +171,11 @@ static NSArray *RDCollectClasses(void) {
 
         free(methodList);
 
-        [classes addObject:@{
+        [result addObject:@{
             @"name":
-                [NSString stringWithUTF8String:className]
-                ?: @"<unknown>",
+                [NSString stringWithUTF8String:name],
 
-            @"classAddress":
+            @"address":
                 RDHex((uintptr_t)cls),
 
             @"methods":
@@ -216,59 +183,25 @@ static NSArray *RDCollectClasses(void) {
         }];
     }
 
-    free(classList);
+    free(list);
 
-    return classes;
-}
-
-#pragma mark - Complete Snapshot
-
-NSDictionary *RDCollectRuntime(void) {
-
-    NSArray *images =
-        RDCollectImages();
-
-    NSArray *classes =
-        RDCollectClasses();
-
-    return @{
-        @"generatedAt":
-            [NSDate date].description ?: @"",
-
-        @"imageCount":
-            @(images.count),
-
-        @"classCount":
-            @(classes.count),
-
-        @"images":
-            images,
-
-        @"classes":
-            classes
-    };
+    return result;
 }
 
 #pragma mark - Search
 
-NSArray *RDSearch(NSDictionary *snapshot,
-                  NSString *query) {
-
-    if (!query.length) {
-        return snapshot[@"classes"] ?: @[];
-    }
+static NSArray *RDSearch(NSString *query)
+{
+    if (!query.length)
+        return RDClasses;
 
     NSString *q =
         query.lowercaseString;
 
-    NSMutableArray *results =
+    NSMutableArray *matches =
         [NSMutableArray array];
 
-    NSArray *classes =
-        snapshot[@"classes"];
-
-    for (NSDictionary *cls
-         in classes) {
+    for (NSDictionary *cls in RDClasses) {
 
         NSString *className =
             cls[@"name"];
@@ -276,74 +209,348 @@ NSArray *RDSearch(NSDictionary *snapshot,
         if ([className.lowercaseString
              containsString:q]) {
 
-            [results addObject:cls];
+            [matches addObject:cls];
             continue;
         }
 
-        NSArray *methods =
-            cls[@"methods"];
-
         for (NSDictionary *method
-             in methods) {
+             in cls[@"methods"]) {
 
-            NSString *name =
-                method[@"name"] ?: @"";
+            NSArray *fields = @[
+                method[@"name"] ?: @"",
+                method[@"address"] ?: @"",
+                method[@"offset"] ?: @"",
+                method[@"image"] ?: @""
+            ];
 
-            NSString *offset =
-                method[@"offset"] ?: @"";
+            BOOL found = NO;
 
-            NSString *address =
-                method[@"address"] ?: "";
+            for (NSString *field in fields) {
+                if ([field.lowercaseString
+                     containsString:q]) {
+                    found = YES;
+                    break;
+                }
+            }
 
-            NSString *image =
-                method[@"image"] ?: @"";
-
-            BOOL match =
-                [name.lowercaseString
-                    containsString:q] ||
-
-                [offset.lowercaseString
-                    containsString:q] ||
-
-                [address.lowercaseString
-                    containsString:q] ||
-
-                [image.lowercaseString
-                    containsString:q];
-
-            if (match) {
-
-                [results addObject:@{
-                    @"class":
+            if (found) {
+                [matches addObject:@{
+                    @"name":
                         className ?: @"<unknown>",
-
-                    @"method":
-                        method
+                    @"address":
+                        cls[@"address"] ?: @"",
+                    @"methods":
+                        @[method]
                 }];
             }
         }
     }
 
-    return results;
+    return matches;
 }
 
-#pragma mark - JSON Export
+#pragma mark - Inspector
 
-NSString *RDJSONString(NSDictionary *snapshot) {
+@interface RDInspector : UIViewController
+<
+UITableViewDelegate,
+UITableViewDataSource,
+UISearchBarDelegate
+>
+@end
 
-    NSError *error = nil;
+@implementation RDInspector {
+    UITableView *_table;
+    UISearchBar *_search;
+    NSArray *_results;
+    NSMutableSet *_expanded;
+    BOOL _minimized;
+}
 
-    NSData *data =
-        [NSJSONSerialization
-            dataWithJSONObject:snapshot
-            options:NSJSONWritingPrettyPrinted
-            error:&error];
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
 
-    if (!data || error) {
-        return @"{}";
+    _expanded =
+        [NSMutableSet set];
+
+    self.view.backgroundColor =
+        UIColor.systemBackgroundColor;
+
+    [self buildUI];
+
+    [self refresh];
+}
+
+#pragma mark UI
+
+- (void)buildUI
+{
+    UIView *bar =
+        [[UIView alloc] init];
+
+    bar.translatesAutoresizingMaskIntoConstraints = NO;
+    bar.backgroundColor =
+        UIColor.secondarySystemBackgroundColor;
+
+    [self.view addSubview:bar];
+
+    UILabel *title =
+        [[UILabel alloc] init];
+
+    title.text = @"Runtime Inspector";
+    title.font =
+        [UIFont boldSystemFontOfSize:17];
+
+    title.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [bar addSubview:title];
+
+    UIButton *refresh =
+        [UIButton buttonWithType:UIButtonTypeSystem];
+
+    [refresh setTitle:@"↻"
+            forState:UIControlStateNormal];
+
+    [refresh addTarget:self
+                action:@selector(refresh)
+      forControlEvents:UIControlEventTouchUpInside];
+
+    refresh.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [bar addSubview:refresh];
+
+    UIButton *minimize =
+        [UIButton buttonWithType:UIButtonTypeSystem];
+
+    [minimize setTitle:@"−"
+              forState:UIControlStateNormal];
+
+    [minimize addTarget:self
+                 action:@selector(toggleMinimize)
+       forControlEvents:UIControlEventTouchUpInside];
+
+    minimize.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [bar addSubview:minimize];
+
+    _search =
+        [[UISearchBar alloc] init];
+
+    _search.placeholder =
+        @"Search class / selector / offset";
+
+    _search.delegate = self;
+    _search.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [self.view addSubview:_search];
+
+    _table =
+        [[UITableView alloc]
+            initWithFrame:CGRectZero
+                  style:UITableViewStyleInsetGrouped];
+
+    _table.delegate = self;
+    _table.dataSource = self;
+
+    _table.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [self.view addSubview:_table];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [bar.topAnchor
+            constraintEqualToAnchor:
+                self.view.safeAreaLayoutGuide.topAnchor],
+
+        [bar.leadingAnchor
+            constraintEqualToAnchor:self.view.leadingAnchor],
+
+        [bar.trailingAnchor
+            constraintEqualToAnchor:self.view.trailingAnchor],
+
+        [bar.heightAnchor
+            constraintEqualToConstant:50],
+
+        [title.leadingAnchor
+            constraintEqualToAnchor:bar.leadingAnchor
+            constant:16],
+
+        [title.centerYAnchor
+            constraintEqualToAnchor:bar.centerYAnchor],
+
+        [minimize.trailingAnchor
+            constraintEqualToAnchor:refresh.leadingAnchor
+            constant:-12],
+
+        [minimize.centerYAnchor
+            constraintEqualToAnchor:bar.centerYAnchor],
+
+        [refresh.trailingAnchor
+            constraintEqualToAnchor:bar.trailingAnchor
+            constant:-16],
+
+        [refresh.centerYAnchor
+            constraintEqualToAnchor:bar.centerYAnchor],
+
+        [_search.topAnchor
+            constraintEqualToAnchor:bar.bottomAnchor],
+
+        [_search.leadingAnchor
+            constraintEqualToAnchor:self.view.leadingAnchor],
+
+        [_search.trailingAnchor
+            constraintEqualToAnchor:self.view.trailingAnchor],
+
+        [_table.topAnchor
+            constraintEqualToAnchor:_search.bottomAnchor],
+
+        [_table.leadingAnchor
+            constraintEqualToAnchor:self.view.leadingAnchor],
+
+        [_table.trailingAnchor
+            constraintEqualToAnchor:self.view.trailingAnchor],
+
+        [_table.bottomAnchor
+            constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
+}
+
+#pragma mark Collection
+
+- (void)refresh
+{
+    RDImages =
+        RDGetImages();
+
+    RDClasses =
+        RDGetClasses();
+
+    _results =
+        RDClasses;
+
+    [_table reloadData];
+}
+
+#pragma mark Minimize
+
+- (void)toggleMinimize
+{
+    _minimized = !_minimized;
+
+    _search.hidden = _minimized;
+    _table.hidden = _minimized;
+}
+
+#pragma mark Search
+
+- (void)searchBar:(UISearchBar *)searchBar
+    textDidChange:(NSString *)searchText
+{
+    _results =
+        RDSearch(searchText);
+
+    [_table reloadData];
+}
+
+#pragma mark Table
+
+- (NSInteger)tableView:(UITableView *)tableView
+ numberOfRowsInSection:(NSInteger)section
+{
+    return _results.count;
+}
+
+- (UITableViewCell *)
+    tableView:(UITableView *)tableView
+    cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    static NSString *identifier =
+        @"RuntimeCell";
+
+    UITableViewCell *cell =
+        [tableView
+            dequeueReusableCellWithIdentifier:identifier];
+
+    if (!cell) {
+        cell =
+            [[UITableViewCell alloc]
+                initWithStyle:UITableViewCellStyleSubtitle
+                reuseIdentifier:identifier];
     }
 
-    return [[NSString alloc]
-        initWithData:data
-        encoding:NSUTF8StringEncoding];
+    NSDictionary *item =
+        _results[indexPath.row];
+
+    cell.textLabel.text =
+        item[@"name"];
+
+    cell.detailTextLabel.text =
+        [NSString stringWithFormat:@"%@  •  %@ methods",
+         item[@"address"],
+         @([item[@"methods"] count])];
+
+    cell.accessoryType =
+        UITableViewCellAccessoryDisclosureIndicator;
+
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView
+ didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    NSDictionary *cls =
+        _results[indexPath.row];
+
+    NSArray *methods =
+        cls[@"methods"];
+
+    UIAlertController *alert =
+        [UIAlertController
+            alertControllerWithTitle:cls[@"name"]
+            message:nil
+            preferredStyle:UIAlertControllerStyleActionSheet];
+
+    NSMutableString *message =
+        [NSMutableString string];
+
+    for (NSDictionary *method in methods) {
+
+        [message appendFormat:
+            @"%@\naddress: %@\noffset: %@\nimage: %@\n\n",
+            method[@"name"],
+            method[@"address"],
+            method[@"offset"] ?: @"<unknown>",
+            method[@"image"]];
+    }
+
+    alert.message = message;
+
+    [alert addAction:
+        [UIAlertAction
+            actionWithTitle:@"Close"
+            style:UIAlertActionStyleCancel
+            handler:nil]];
+
+    [self presentViewController:alert
+                       animated:YES
+                     completion:nil];
+
+    [tableView deselectRowAtIndexPath:indexPath
+                             animated:YES];
+}
+
+@end
+
+#pragma mark - Authorized automatic initialization
+
+__attribute__((constructor))
+static void RuntimeDumperInitialize(void)
+{
+    NSLog(@"[RuntimeDumper] initialized");
+
+    /*
+     This constructor is intentionally limited to initialization.
+     The inspector can be presented by the host application that
+     owns/loads this library.
+    */
 }
