@@ -2,23 +2,35 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
-#import <mach-o/loader.h>
 
-#pragma mark - Compatibility
+#pragma mark - iOS Compatibility Layer
 
-#ifndef __IPHONE_13_0
-@interface UIFont (Compat)
-+ (UIFont *)monospaceSystemFontOfSize:(CGFloat)size;
-@end
+#ifndef UIWindowLevelStatusBar
+#define UIWindowLevelStatusBar 1000.0
 #endif
 
-static UIFont *SafeMonospaceFont(CGFloat size) {
-    if ([UIFont respondsToSelector:@selector(monospaceSystemFontOfSize:)]) {
-        return [UIFont monospaceSystemFontOfSize:size];
-    }
-    return [UIFont fontWithName:@"Menlo" size:size] ?: 
-           [UIFont fontWithName:@"Courier" size:size] ?: 
-           [UIFont systemFontOfSize:size];
+// Safe font loader that works on iOS 7+
+static UIFont *GetMonospaceFont(CGFloat size) {
+    static UIFont *cached = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // Try modern API first (iOS 13+)
+        if ([UIFont respondsToSelector:@selector(monospaceSystemFontOfSize:)]) {
+            cached = [UIFont performSelector:@selector(monospaceSystemFontOfSize:) withObject:@(size)];
+        }
+        // Fallback to Menlo (iOS 7+)
+        if (!cached) {
+            cached = [UIFont fontWithName:@"Menlo" size:size];
+        }
+        // Last resort
+        if (!cached) {
+            cached = [UIFont fontWithName:@"Courier" size:size];
+        }
+        if (!cached) {
+            cached = [UIFont systemFontOfSize:size];
+        }
+    });
+    return cached;
 }
 
 #pragma mark - Data Model
@@ -26,19 +38,18 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
 @interface DumpEntry : NSObject
 @property (nonatomic, copy) NSString *text;
 @property (nonatomic, copy) NSString *hexOffset;
-@property (nonatomic, assign) uintptr_t rawOffset;
 @end
 
 @implementation DumpEntry
 @end
 
-#pragma mark - Main Window
+#pragma mark - Dumper UI
 
 @interface DumperWindow : UIWindow <UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate>
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UISearchBar *searchBar;
-@property (nonatomic, strong) NSMutableArray<DumpEntry *> *allData;
-@property (nonatomic, strong) NSMutableArray<DumpEntry *> *filteredData;
+@property (nonatomic, strong) NSMutableArray *allData;      // Array of DumpEntry
+@property (nonatomic, strong) NSMutableArray *filteredData; // Array of DumpEntry
 @property (nonatomic, assign) uintptr_t binaryBase;
 @property (nonatomic, strong) UILabel *statusLabel;
 @end
@@ -52,61 +63,64 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
         self.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.98];
         self.hidden = NO;
         
-        // Find binary base (first image is usually the main executable)
+        // Find binary base
+        self.binaryBase = 0;
         for (uint32_t i = 0; i < _dyld_image_count(); i++) {
             const char *name = _dyld_get_image_name(i);
-            if (strstr(name, ".app/") && !strstr(name, ".dylib")) {
+            if (name && strstr(name, ".app/") && !strstr(name, ".dylib")) {
                 self.binaryBase = (uintptr_t)_dyld_get_image_header(i);
                 break;
             }
         }
         
         [self setupUI];
-        [self dumpAllObjC];
+        [self performSelectorInBackground:@selector(dumpAllObjC) withObject:nil];
     }
     return self;
 }
 
 - (void)setupUI {
-    CGFloat topPadding = 60;
-    CGFloat buttonHeight = 40;
+    CGFloat topPadding = 60.0;
     
-    // Header buttons
-    UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    closeBtn.frame = CGRectMake(self.bounds.size.width - 60, topPadding - 50, 50, 30);
+    // Close button
+    UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    closeBtn.frame = CGRectMake(self.bounds.size.width - 50, topPadding - 45, 40, 30);
     [closeBtn setTitle:@"✕" forState:UIControlStateNormal];
-    closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:20];
+    closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:18];
     [closeBtn setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
     [closeBtn addTarget:self action:@selector(hideWindow) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:closeBtn];
     
-    UIButton *copyAllBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    copyAllBtn.frame = CGRectMake(10, topPadding - 50, 80, 30);
-    [copyAllBtn setTitle:@"Copy All" forState:UIControlStateNormal];
-    copyAllBtn.titleLabel.font = [UIFont boldSystemFontOfSize:14];
-    [copyAllBtn setTitleColor:[UIColor cyanColor] forState:UIControlStateNormal];
-    [copyAllBtn addTarget:self action:@selector(copyAllToClipboard) forControlEvents:UIControlEventTouchUpInside];
-    [self addSubview:copyAllBtn];
+    // Copy All button
+    UIButton *copyBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    copyBtn.frame = CGRectMake(10, topPadding - 45, 80, 30);
+    [copyBtn setTitle:@"Copy All" forState:UIControlStateNormal];
+    copyBtn.titleLabel.font = [UIFont boldSystemFontOfSize:13];
+    [copyBtn setTitleColor:[UIColor cyanColor] forState:UIControlStateNormal];
+    [copyBtn addTarget:self action:@selector(copyAll) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:copyBtn];
     
-    UIButton *refreshBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    refreshBtn.frame = CGRectMake(100, topPadding - 50, 70, 30);
+    // Refresh button
+    UIButton *refreshBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    refreshBtn.frame = CGRectMake(100, topPadding - 45, 70, 30);
     [refreshBtn setTitle:@"Refresh" forState:UIControlStateNormal];
-    refreshBtn.titleLabel.font = [UIFont boldSystemFontOfSize:14];
+    refreshBtn.titleLabel.font = [UIFont boldSystemFontOfSize:13];
     [refreshBtn setTitleColor:[UIColor yellowColor] forState:UIControlStateNormal];
     [refreshBtn addTarget:self action:@selector(refreshData) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:refreshBtn];
     
     // Status label
-    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, topPadding - 20, self.bounds.size.width, 20)];
+    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, topPadding - 18, self.bounds.size.width, 18)];
     self.statusLabel.textAlignment = NSTextAlignmentCenter;
-    self.statusLabel.font = [UIFont systemFontOfSize:11];
+    self.statusLabel.font = [UIFont systemFontOfSize:10];
     self.statusLabel.textColor = [UIColor lightGrayColor];
+    self.statusLabel.text = @"Loading...";
     [self addSubview:self.statusLabel];
     
     // Search bar
     self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, topPadding, self.bounds.size.width, 44)];
     self.searchBar.delegate = self;
-    self.searchBar.placeholder = @"Search classes, methods, ivars...";
+    self.searchBar.placeholder = @"Search...";
     self.searchBar.barStyle = UIBarStyleBlack;
     self.searchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
@@ -118,105 +132,103 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
     self.tableView.delegate = self;
     self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.separatorColor = [UIColor darkGrayColor];
-    self.tableView.allowsSelection = NO;
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"cell"];
     [self addSubview:self.tableView];
 }
 
 - (void)dumpAllObjC {
-    self.allData = [NSMutableArray array];
-    
-    unsigned int classCount;
-    Class *classes = objc_copyClassList(&classCount);
-    
-    // Sort classes alphabetically for easier navigation
-    NSMutableArray *classNames = [NSMutableArray arrayWithCapacity:classCount];
-    for (unsigned int i = 0; i < classCount; i++) {
-        [classNames addObject:@(class_getName(classes[i]))];
+    @autoreleasepool {
+        NSMutableArray *tempData = [NSMutableArray array];
+        
+        unsigned int classCount = 0;
+        Class *classes = objc_copyClassList(&classCount);
+        
+        if (!classes || classCount == 0) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.statusLabel.text = @"No classes found";
+            });
+            return;
+        }
+        
+        // Get class names and sort
+        NSMutableArray *classNames = [NSMutableArray arrayWithCapacity:classCount];
+        for (unsigned int i = 0; i < classCount; i++) {
+            const char *name = class_getName(classes[i]);
+            if (name) {
+                [classNames addObject:[NSString stringWithUTF8String:name]];
+            }
+        }
+        free(classes);
+        
+        [classNames sortUsingSelector:@selector(caseInsensitiveCompare:)];
+        
+        for (NSString *classNameStr in classNames) {
+            Class cls = objc_getClass([classNameStr UTF8String]);
+            if (!cls) continue;
+            
+            const char *className = class_getName(cls);
+            if (!className) continue;
+            
+            // Skip system classes
+            if (strncmp(className, "UI", 2) == 0 || 
+                strncmp(className, "NS", 2) == 0 || 
+                strncmp(className, "CA", 2) == 0 ||
+                strncmp(className, "CF", 2) == 0 ||
+                strncmp(className, "CG", 2) == 0 ||
+                strncmp(className, "OS_", 3) == 0) continue;
+            
+            // Class entry
+            uintptr_t classAddr = (uintptr_t)cls - self.binaryBase;
+            DumpEntry *classEntry = [[DumpEntry alloc] init];
+            classEntry.text = [NSString stringWithFormat:@"[CLASS] %s (0x%lx)", className, classAddr];
+            classEntry.hexOffset = [NSString stringWithFormat:@"0x%lx", classAddr];
+            [tempData addObject:classEntry];
+            
+            // Methods
+            unsigned int methodCount = 0;
+            Method *methods = class_copyMethodList(cls, &methodCount);
+            if (methods) {
+                for (unsigned int j = 0; j < methodCount; j++) {
+                    SEL selector = method_getName(methods[j]);
+                    IMP imp = method_getImplementation(methods[j]);
+                    if (!selector || !imp) continue;
+                    
+                    uintptr_t offset = (uintptr_t)imp - self.binaryBase;
+                    DumpEntry *entry = [[DumpEntry alloc] init];
+                    entry.text = [NSString stringWithFormat:@"  - %s (0x%lx)", 
+                                 sel_getName(selector), offset];
+                    entry.hexOffset = [NSString stringWithFormat:@"0x%lx", offset];
+                    [tempData addObject:entry];
+                }
+                free(methods);
+            }
+            
+            // Ivars
+            unsigned int ivarCount = 0;
+            Ivar *ivars = class_copyIvarList(cls, &ivarCount);
+            if (ivars) {
+                for (unsigned int j = 0; j < ivarCount; j++) {
+                    const char *ivarName = ivar_getName(ivars[j]);
+                    if (!ivarName) continue;
+                    
+                    ptrdiff_t ivarOffset = ivar_getOffset(ivars[j]);
+                    DumpEntry *entry = [[DumpEntry alloc] init];
+                    entry.text = [NSString stringWithFormat:@"  ivar: %s (+0x%tx)", ivarName, ivarOffset];
+                    entry.hexOffset = [NSString stringWithFormat:@"0x%tx", ivarOffset];
+                    [tempData addObject:entry];
+                }
+                free(ivars);
+            }
+        }
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.allData = tempData;
+            self.filteredData = [NSMutableArray arrayWithArray:tempData];
+            self.statusLabel.text = [NSString stringWithFormat:@"Dumped %lu entries | Base: 0x%lx", 
+                                    (unsigned long)self.allData.count, self.binaryBase];
+            [self.tableView reloadData];
+        });
     }
-    [classNames sortUsingSelector:@selector(caseInsensitiveCompare:)];
-    
-    for (NSString *classNameStr in classNames) {
-        Class cls = objc_getClass([classNameStr UTF8String]);
-        if (!cls) continue;
-        
-        const char *className = class_getName(cls);
-        
-        // Skip system frameworks (aggressive filter)
-        if (strncmp(className, "UI", 2) == 0 || 
-            strncmp(className, "NS", 2) == 0 || 
-            strncmp(className, "CA", 2) == 0 ||
-            strncmp(className, "CF", 2) == 0 ||
-            strncmp(className, "CG", 2) == 0 ||
-            strncmp(className, "OS_", 3) == 0 ||
-            strncmp(className, "Swift", 5) == 0) continue;
-        
-        // Class entry
-        uintptr_t classAddr = (uintptr_t)cls - self.binaryBase;
-        DumpEntry *classEntry = [[DumpEntry alloc] init];
-        classEntry.text = [NSString stringWithFormat:@"📦 %s (0x%lx)", className, classAddr];
-        classEntry.hexOffset = [NSString stringWithFormat:@"0x%lx", classAddr];
-        classEntry.rawOffset = classAddr;
-        [self.allData addObject:classEntry];
-        
-        // Methods
-        unsigned int methodCount;
-        Method *methods = class_copyMethodList(cls, &methodCount);
-        if (methods) {
-            for (unsigned int j = 0; j < methodCount; j++) {
-                SEL selector = method_getName(methods[j]);
-                IMP imp = method_getImplementation(methods[j]);
-                uintptr_t offset = (uintptr_t)imp - self.binaryBase;
-                
-                DumpEntry *entry = [[DumpEntry alloc] init];
-                entry.text = [NSString stringWithFormat:@"   └ %s (0x%lx)", 
-                             sel_getName(selector), offset];
-                entry.hexOffset = [NSString stringWithFormat:@"0x%lx", offset];
-                entry.rawOffset = offset;
-                [self.allData addObject:entry];
-            }
-            free(methods);
-        }
-        
-        // Ivars
-        unsigned int ivarCount;
-        Ivar *ivars = class_copyIvarList(cls, &ivarCount);
-        if (ivars) {
-            for (unsigned int j = 0; j < ivarCount; j++) {
-                const char *ivarName = ivar_getName(ivars[j]);
-                ptrdiff_t ivarOffset = ivar_getOffset(ivars[j]);
-                
-                DumpEntry *entry = [[DumpEntry alloc] init];
-                entry.text = [NSString stringWithFormat:@"   ├ ivar: %s (+0x%tx)", 
-                             ivarName, ivarOffset];
-                entry.hexOffset = [NSString stringWithFormat:@"0x%tx", ivarOffset];
-                entry.rawOffset = (uintptr_t)ivarOffset;
-                [self.allData addObject:entry];
-            }
-            free(ivars);
-        }
-        
-        // Properties
-        unsigned int propCount;
-        objc_property_t *props = class_copyPropertyList(cls, &propCount);
-        if (props) {
-            for (unsigned int j = 0; j < propCount; j++) {
-                const char *propName = property_getName(props[j]);
-                DumpEntry *entry = [[DumpEntry alloc] init];
-                entry.text = [NSString stringWithFormat:@"   ├ @property: %s", propName];
-                entry.hexOffset = @"";
-                entry.rawOffset = 0;
-                [self.allData addObject:entry];
-            }
-            free(props);
-        }
-    }
-    free(classes);
-    
-    self.filteredData = [self.allData mutableCopy];
-    self.statusLabel.text = [NSString stringWithFormat:@"Dumped %lu entries | Base: 0x%lx", 
-                            (unsigned long)self.allData.count, self.binaryBase];
-    [self.tableView reloadData];
 }
 
 #pragma mark - Actions
@@ -226,15 +238,14 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
 }
 
 - (void)refreshData {
-    [self dumpAllObjC];
-    [self showToast:@"Refreshed"];
+    self.statusLabel.text = @"Refreshing...";
+    [self performSelectorInBackground:@selector(dumpAllObjC) withObject:nil];
 }
 
-- (void)copyAllToClipboard {
+- (void)copyAll {
     NSMutableString *output = [NSMutableString string];
     [output appendFormat:@"# ObjC Dump - Base: 0x%lx\n", self.binaryBase];
-    [output appendFormat:@"# Device: %@\n", [UIDevice currentDevice].model];
-    [output appendFormat:@"# iOS: %@\n\n", [UIDevice currentDevice].systemVersion];
+    [output appendFormat:@"# iOS: %@\n\n", [[UIDevice currentDevice] systemVersion]];
     
     for (DumpEntry *entry in self.filteredData) {
         [output appendString:entry.text];
@@ -252,17 +263,19 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
 }
 
 - (void)showToast:(NSString *)msg {
+    if (!self.rootViewController) return;
+    
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil 
                                                                    message:msg 
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [self.rootViewController presentViewController:alert animated:YES completion:nil];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), 
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)), 
                    dispatch_get_main_queue(), ^{
         [alert dismissViewControllerAnimated:YES completion:nil];
     });
 }
 
-#pragma mark - UITableView
+#pragma mark - TableView
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     return self.filteredData.count;
@@ -273,18 +286,25 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
     DumpEntry *entry = self.filteredData[indexPath.row];
     
     cell.textLabel.text = entry.text;
-    cell.textLabel.font = SafeMonospaceFont(10);
-    cell.textLabel.textColor = [entry.text hasPrefix:@"📦"] ? 
+    cell.textLabel.font = GetMonospaceFont(10);
+    cell.textLabel.textColor = [entry.text hasPrefix:@"[CLASS]"] ? 
         [UIColor cyanColor] : [UIColor greenColor];
     cell.textLabel.numberOfLines = 1;
     cell.textLabel.adjustsFontSizeToFitWidth = YES;
+    cell.textLabel.minimumScaleFactor = 0.5;
     cell.backgroundColor = [UIColor clearColor];
     
-    // Long press to copy
+    // Add long press
+    for (UIGestureRecognizer *gesture in cell.gestureRecognizers) {
+        if ([gesture isKindOfClass:[UILongPressGestureRecognizer class]]) {
+            [cell removeGestureRecognizer:gesture];
+        }
+    }
+    
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] 
                                                initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = 0.3;
-    cell.tag = indexPath.row;
+    objc_setAssociatedObject(cell, "entry", entry, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [cell addGestureRecognizer:longPress];
     
     return cell;
@@ -293,16 +313,18 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
 - (void)handleLongPress:(UILongPressGestureRecognizer *)gesture {
     if (gesture.state == UIGestureRecognizerStateBegan) {
         UITableViewCell *cell = (UITableViewCell *)gesture.view;
-        DumpEntry *entry = self.filteredData[cell.tag];
-        [self copyEntry:entry];
+        DumpEntry *entry = objc_getAssociatedObject(cell, "entry");
+        if (entry) {
+            [self copyEntry:entry];
+        }
     }
 }
 
-#pragma mark - UISearchBar
+#pragma mark - Search
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
     if (searchText.length == 0) {
-        self.filteredData = [self.allData mutableCopy];
+        self.filteredData = [NSMutableArray arrayWithArray:self.allData];
     } else {
         NSMutableArray *filtered = [NSMutableArray array];
         for (DumpEntry *entry in self.allData) {
@@ -333,12 +355,12 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
     self = [super initWithFrame:frame];
     if (self) {
         [self setTitle:@"🔍" forState:UIControlStateNormal];
-        self.titleLabel.font = [UIFont systemFontOfSize:24];
+        self.titleLabel.font = [UIFont systemFontOfSize:22];
         self.backgroundColor = [UIColor colorWithWhite:0.15 alpha:0.9];
-        self.layer.cornerRadius = 25;
+        self.layer.cornerRadius = 22;
         self.layer.borderWidth = 2;
         self.layer.borderColor = [UIColor cyanColor].CGColor;
-        self.alpha = 0.8;
+        self.alpha = 0.85;
         
         UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self 
                                                                               action:@selector(drag:)];
@@ -352,7 +374,6 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
     CGPoint translation = [gesture translationInView:self.superview];
     CGPoint newCenter = CGPointMake(self.center.x + translation.x, self.center.y + translation.y);
     
-    // Keep on screen
     CGFloat halfW = self.bounds.size.width / 2;
     CGFloat halfH = self.bounds.size.height / 2;
     newCenter.x = MAX(halfW, MIN(self.superview.bounds.size.width - halfW, newCenter.x));
@@ -368,7 +389,7 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
     } else {
         if (!self.dumpWindow) {
             self.dumpWindow = [[DumperWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-            self.dumpWindow.rootViewController = [UIViewController new];
+            self.dumpWindow.rootViewController = [[UIViewController alloc] init];
         }
         self.dumpWindow.hidden = NO;
     }
@@ -376,39 +397,31 @@ static UIFont *SafeMonospaceFont(CGFloat size) {
 
 @end
 
-#pragma mark - Constructor (LiveContainer Safe)
+#pragma mark - Constructor
 
 __attribute__((constructor))
-static void ObjCDumperInit(int argc, const char **argv) {
-    // LiveContainer compatibility: Delay injection to let app stabilize
-    // LiveContainer loads dylibs earlier than traditional substrate
-    NSTimeInterval delay = 2.0;
-    
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), 
+static void ObjCDumperInit(void) {
+    // LiveContainer needs delay for UI to be ready
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), 
                    dispatch_get_main_queue(), ^{
         @autoreleasepool {
-            // Verify we're in an app context (not extension)
-            if (![UIApplication respondsToSelector:@selector(sharedApplication)]) {
-                NSLog(@"[ObjCDumper] Not in app context, skipping");
-                return;
-            }
+            // Verify we have UIApplication
+            if (![UIApplication respondsToSelector:@selector(sharedApplication)]) return;
             
             UIApplication *app = [UIApplication sharedApplication];
-            if (!app) {
-                NSLog(@"[ObjCDumper] No shared application, skipping");
-                return;
-            }
+            if (!app) return;
             
-            // Find key window (iOS 13+ scene support)
+            // Find key window (iOS 13+ scenes)
             UIWindow *keyWindow = nil;
             
+            // Try modern scene API first
             if (@available(iOS 13.0, *)) {
-                for (UIScene *scene in app.connectedScenes) {
-                    if (scene.activationState == UISceneActivationStateForegroundActive && 
-                        [scene isKindOfClass:[UIWindowScene class]]) {
+                NSSet *scenes = app.connectedScenes;
+                for (UIScene *scene in scenes) {
+                    if ([scene isKindOfClass:[UIWindowScene class]]) {
                         UIWindowScene *windowScene = (UIWindowScene *)scene;
                         for (UIWindow *window in windowScene.windows) {
-                            if (window.isKeyWindow) {
+                            if (window.isKeyWindow && !window.hidden) {
                                 keyWindow = window;
                                 break;
                             }
@@ -418,7 +431,7 @@ static void ObjCDumperInit(int argc, const char **argv) {
                 }
             }
             
-            // Fallback for older iOS or if scene lookup failed
+            // Fallback to legacy
             if (!keyWindow) {
                 for (UIWindow *window in app.windows) {
                     if (window.isKeyWindow && !window.hidden) {
@@ -428,32 +441,21 @@ static void ObjCDumperInit(int argc, const char **argv) {
                 }
             }
             
-            if (!keyWindow) {
-                // Last resort: use first window
-                keyWindow = app.windows.firstObject;
+            // Last resort
+            if (!keyWindow && app.windows.count > 0) {
+                keyWindow = app.windows[0];
             }
             
             if (!keyWindow) {
-                NSLog(@"[ObjCDumper] No window found, retrying...");
-                // Retry once after 3 more seconds
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), 
-                               dispatch_get_main_queue(), ^{
-                    UIWindow *retryWindow = [UIApplication sharedApplication].windows.firstObject;
-                    if (retryWindow) {
-                        FloatingButton *btn = [[FloatingButton alloc] initWithFrame:CGRectMake(100, 200, 50, 50)];
-                        [retryWindow addSubview:btn];
-                        NSLog(@"[ObjCDumper] Injected on retry");
-                    }
-                });
+                NSLog(@"[ObjCDumper] No window found");
                 return;
             }
             
-            FloatingButton *btn = [[FloatingButton alloc] initWithFrame:CGRectMake(100, 200, 50, 50)];
+            FloatingButton *btn = [[FloatingButton alloc] initWithFrame:CGRectMake(100, 200, 44, 44)];
             [keyWindow addSubview:btn];
             [keyWindow bringSubviewToFront:btn];
             
-            NSLog(@"[ObjCDumper] Successfully injected - Base: 0x%lx", 
-                  (uintptr_t)_dyld_get_image_header(0));
+            NSLog(@"[ObjCDumper] Injected successfully");
         }
     });
 }
