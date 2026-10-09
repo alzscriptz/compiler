@@ -1,32 +1,30 @@
 #import <mach/mach.h>
 #import <stdint.h>
+#import <stdio.h>
 
-void modifyCoinsToThousand(uintptr_t imageBase, uintptr_t staticManagerOffset, uintptr_t coinFieldOffset) {
-    // Step 1: Resolve the static pointer to get the active manager instance
-    // Base Address + Static Offset = Address where the instance pointer lives
-    uintptr_t pointerAddress = imageBase + staticManagerOffset;
-    uintptr_t managerInstance = *(uintptr_t *)pointerAddress;
+// This attribute forces the function to run automatically as soon as the dylib is loaded by LiveContainer
+__attribute__((constructor)) static void initMain() {
+    printf("[LiveContainerTweak] Loaded successfully!\n");
     
-    if (managerInstance == 0) {
-        // The manager instance hasn't been created in memory yet (e.g., still on the main menu)
-        return;
-    }
+    // Example placeholder values - replace these with your actual dumped addresses
+    // Note: In LiveContainer, you may need _dyld_get_image_header(0) for the main executable base,
+    // or look up the specific framework/library base address (e.g., UnityFramework).
     
-    // Step 2: Add your small relative object offset to land directly on the coin variable
-    uintptr_t coinAddress = managerInstance + coinFieldOffset;
+    // uintptr_t imageBase = (uintptr_t)_dyld_get_image_header(0); 
+    // uintptr_t staticManagerOffset = 0x123456; // Replace with your static manager RVA
+    // uintptr_t coinFieldOffset = 0x24;         // Replace with your small offset
     
-    // Step 3: Ensure the memory page is writable, then write the new value
-    mach_port_t task = mach_task_self();
-    kern_return_t err;
-    
-    // Make the memory writable (VM_PROT_COPY ensures safety if it's copy-on-write)
-    err = mach_vm_protect(task, (mach_vm_address_t)coinAddress, sizeof(int), FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
-    
-    if (err == KERN_SUCCESS) {
-        // Overwrite the existing coin count with 1000
-        *(int *)coinAddress = 1000;
-        
-        // Optional: You can restore memory protection here if needed, 
-        // but leaving it writable is standard for active game variable modifications.
-    }
+    // Pointer resolution logic:
+    // uintptr_t pointerAddress = imageBase + staticManagerOffset;
+    // uintptr_t managerInstance = *(uintptr_t *)pointerAddress;
+    // 
+    // if (managerInstance != 0) {
+    //     uintptr_t coinAddress = managerInstance + coinFieldOffset;
+    //     mach_port_t task = mach_task_self();
+    //     
+    //     if (mach_vm_protect(task, (mach_vm_address_t)coinAddress, sizeof(int), FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY) == KERN_SUCCESS) {
+    //         *(int *)coinAddress = 1000;
+    //         printf("[LiveContainerTweak] Coins modified successfully!\n");
+    //     }
+    // }
 }
