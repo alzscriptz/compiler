@@ -17,8 +17,8 @@
     [super viewDidLoad];
     self.isMinimized = NO;
     
-    // Main Container Frame
-    self.mainView = [[UIView alloc] initWithFrame:CGRectMake(50, 100, 260, 210];
+    // Main Container Frame (Fixed parenthesis syntax)
+    self.mainView = [[UIView alloc] initWithFrame:CGRectMake(50, 100, 260, 210)];
     self.mainView.backgroundColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:0.9];
     self.mainView.layer.cornerRadius = 12;
     self.mainView.layer.borderWidth = 1.5;
@@ -90,53 +90,71 @@
     self.mainView.frame = frame;
 }
 
-// Memory Offset Calculation & Writing Logic
+// Base + Offset = Real Offset Calculation & Memory Writing
 - (void)applyValues {
     [self.view endEditing:YES]; // Hide keyboard
     
-    // 1. Calculate Real Offset using: base + offset = real offset
-    uintptr_t baseAddress = _dyld_get_image_vmaddr_slide(0); // App main binary slide/base
+    // 1. Get ASLR base address slide
+    uintptr_t baseAddress = _dyld_get_image_vmaddr_slide(0); 
     
-    // Replace these placeholder offsets with your actual analyzed offsets from IDA/Ghidra/Hopper
+    // Replace with your game's actual analyzed offsets
     uintptr_t coinsOffset = 0x1234568; 
     uintptr_t gemsOffset = 0x123456C;
     
+    // 2. Real Offset Formula: base + offset = real offset
     uintptr_t realCoinsAddress = baseAddress + coinsOffset;
     uintptr_t realGemsAddress = baseAddress + gemsOffset;
     
-    // 2. Parse text input values
+    // 3. Parse input text
     int targetCoins = [self.coinsField.text intValue];
     int targetGems = [self.gemsField.text intValue];
     
-    // 3. Write values to memory (Ensure appropriate pointer dereferencing or safety checks)
-    if (realCoinsAddress != baseAddress && targetCoins > 0) {
+    // 4. Write to memory safely
+    if (baseAddress != 0 && targetCoins > 0) {
         *(int *)realCoinsAddress = targetCoins;
     }
     
-    if (realGemsAddress != baseAddress && targetGems > 0) {
+    if (baseAddress != 0 && targetGers > 0) {
         *(int *)realGemsAddress = targetGems;
     }
     
-    // Visual Feedback Alert
-    NSLog(@"[ModMenu] Applied Coins: %d, Gems: %d", targetCoins, targetGems);
+    NSLog(@"[ModMenu] Base: 0x%lx | Coins -> Real Addr: 0x%lx (%d)", (unsigned long)baseAddress, (unsigned long)realCoinsAddress, targetCoins);
 }
 
 // Dismiss keyboard on tap outside
-- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent)event {
     [self.view endEditing:YES];
 }
 
 @end
 
-// Constructor to inject and present the window when the app launches
-__attribute__((constructor)) void initCheatMenu() {
+// LiveContainer Compatible Constructor Attribute Entry Point
+__attribute__((constructor)) static void initCheatMenu() {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIWindow *window = [[UIApplication sharedApplication] keyWindow];
-        CheatMenuViewController *menuVC = [[CheatMenuViewController alloc] init];
-        menuVC.view.frame = window.bounds;
-        menuVC.view.backgroundColor = [UIColor clearColor];
+        UIWindow *window = nil;
         
-        // Ensure menu sits on top of game views
-        [window addSubview:menuVC.view];
+        // Safe window acquisition compatible with iOS 13+ Scene Delegates used in LiveContainer
+        if (@available(iOS 13.0, *)) {
+            for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                if (scene.activationState == UISceneActivationStateForegroundActive) {
+                    for (UIWindow *w in scene.windows) {
+                        if (w.isKeyWindow) {
+                            window = w;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if (!window) {
+            window = [[UIApplication sharedApplication] keyWindow];
+        }
+        
+        if (window) {
+            CheatMenuViewController *menuVC = [[CheatMenuViewController alloc] init];
+            menuVC.view.frame = window.bounds;
+            menuVC.view.backgroundColor = [UIColor clearColor];
+            [window addSubview:menuVC.view];
+        }
     });
 }
