@@ -1,30 +1,44 @@
+#import <Foundation/Foundation.h>
 #import <mach/mach.h>
-#import <stdint.h>
-#import <stdio.h>
 
-// This attribute forces the function to run automatically as soon as the dylib is loaded by LiveContainer
-__attribute__((constructor)) static void initMain() {
-    printf("[LiveContainerTweak] Loaded successfully!\n");
+/**
+ * Patches the CanCollectCoins boolean field at a given BotController instance address.
+ * 
+ * @param botControllerInstance Pointer to the active BotController instance object in memory.
+ * @return BOOL YES if successful, NO otherwise.
+ */
+BOOL patchCoinCollection(void *botControllerInstance) {
+    if (botControllerInstance == NULL) {
+        NSLog(@"[-] Error: BotController instance pointer is NULL.");
+        return NO;
+    }
+
+    // Define the dumped offset
+    uintptr_t coinOffset = 0x0173;
     
-    // Example placeholder values - replace these with your actual dumped addresses
-    // Note: In LiveContainer, you may need _dyld_get_image_header(0) for the main executable base,
-    // or look up the specific framework/library base address (e.g., UnityFramework).
+    // Calculate the exact target address (Instance Base + Field Offset)
+    volatile BOOL *targetAddress = (volatile BOOL *)((uintptr_t)botControllerInstance + coinOffset);
+
+    // Value to write (true / 1)
+    BOOL newValue = YES;
+
+    // Optional: Make the memory region writable if it's protected
+    mach_port_t task = mach_task_self();
+    vm_size_t pageSize = vm_page_size;
+    vm_address_t pageAddress = (vm_address_t)((uintptr_t)targetAddress & ~(pageSize - 1));
     
-    // uintptr_t imageBase = (uintptr_t)_dyld_get_image_header(0); 
-    // uintptr_t staticManagerOffset = 0x123456; // Replace with your static manager RVA
-    // uintptr_t coinFieldOffset = 0x24;         // Replace with your small offset
-    
-    // Pointer resolution logic:
-    // uintptr_t pointerAddress = imageBase + staticManagerOffset;
-    // uintptr_t managerInstance = *(uintptr_t *)pointerAddress;
-    // 
-    // if (managerInstance != 0) {
-    //     uintptr_t coinAddress = managerInstance + coinFieldOffset;
-    //     mach_port_t task = mach_task_self();
-    //     
-    //     if (mach_vm_protect(task, (mach_vm_address_t)coinAddress, sizeof(int), FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY) == KERN_SUCCESS) {
-    //         *(int *)coinAddress = 1000;
-    //         printf("[LiveContainerTweak] Coins modified successfully!\n");
-    //     }
-    // }
+    kern_return_t kr = vm_protect(task, pageAddress, pageSize, FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
+    if (kr != KERN_SUCCESS) {
+        NSLog(@"[-] Warning: vm_protect failed with error %d. Attempting direct write...", kr);
+    }
+
+    // Perform the memory write safely
+    @try {
+        *targetAddress = newValue;
+        NSLog(@"[+] SUCCESS: Wrote 'YES' to BotController + 0x0173 (Address: %p)", (void *)targetAddress);
+        return YES;
+    } @catch (NSException *exception) {
+        NSLog(@"[-] EXCEPTION during memory write: %@ - %@", exception.name, exception.reason);
+        return NO;
+    }
 }
