@@ -1,28 +1,30 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <mach-o/dyld.h>
+#import <mach/mach.h>
 
-@interface TweakFloatingViewController : UIViewController <UITextFieldDelegate>
+@interface MemoryPatchViewController : UIViewController <UITextFieldDelegate>
 @property (nonatomic, strong) UIView *containerView;
-@property (nonatomic, strong) UITextField *offsetTextField;
-@property (nonatomic, strong) UILabel *resultLabel;
+@property (nonatomic, strong) UITextField *valueTextField;
+@property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIButton *minimizeButton;
 @property (nonatomic, assign) BOOL isMinimized;
 @property (nonatomic, assign) CGRect expandedFrame;
 @end
 
-@implementation TweakFloatingViewController {
-    uintptr_t _baseAddress;
+@implementation MemoryPatchViewController {
+    uintptr_t _targetAddress;
 }
 
 - (void)viewDidLoad {
-    [super viewDidLoad]; // Fixed: changed from [super.viewDidLoad]
+    [super viewDidLoad];
     
-    // Get the base address (ASLR slide) of the main executable
+    // 1. Calculate Base Address + your offset (0x560F1994)
     const struct mach_header *header = _dyld_get_image_header(0);
-    _baseAddress = (uintptr_t)header;
+    uintptr_t baseAddress = (uintptr_t)header;
+    _targetAddress = baseAddress + 0x560F1994;
     
-    self.expandedFrame = CGRectMake(20, 50, 260, 160);
+    self.expandedFrame = CGRectMake(20, 50, 260, 165);
     
     // Main Container View
     self.containerView = [[UIView alloc] initWithFrame:self.expandedFrame];
@@ -33,60 +35,49 @@
     self.containerView.clipsToBounds = YES;
     [self.view addSubview:self.containerView];
     
-    // Title Label (Shows Base Address)
-    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 10, 180, 24)];
-    titleLabel.text = [NSString stringWithFormat:@"Base: 0x%lx", (unsigned long)_baseAddress];
-    titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
-    titleLabel.textColor = [UIColor whiteColor];
+    // Title Label (Shows Target Address)
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 10, 236, 20)];
+    titleLabel.text = [NSString stringWithFormat:@"Addr: 0x%lx", (unsigned long)_targetAddress];
+    titleLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
+    titleLabel.textColor = [UIColor cyanColor];
     [self.containerView addSubview:titleLabel];
     
     // Minimize Button
     self.minimizeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.minimizeButton.frame = CGRectMake(220, 10, 30, 24);
+    self.minimizeButton.frame = CGRectMake(220, 8, 30, 24);
     [self.minimizeButton setTitle:@"−" forState:UIControlStateNormal];
     [self.minimizeButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     self.minimizeButton.titleLabel.font = [UIFont boldSystemFontOfSize:18];
     [self.minimizeButton addTarget:self action:@selector(toggleMinimize) forControlEvents:UIControlEventTouchUpInside];
     [self.containerView addSubview:self.minimizeButton];
     
-    // Textbox for Offset (Pre-filled with your offset)
-    self.offsetTextField = [[UITextField alloc] initWithFrame:CGRectMake(12, 42, 236, 32)];
-    self.offsetTextField.text = @"0x560F1994";
-    self.offsetTextField.font = [UIFont monospacedSystemFontOfSize:13.0 weight:UIFontWeightRegular];
-    self.offsetTextField.textColor = [UIColor greenColor];
-    self.offsetTextField.backgroundColor = [UIColor colorWithWhite:0.2 alpha:1.0];
-    self.offsetTextField.borderStyle = UITextBorderStyleRoundedRect;
-    self.offsetTextField.delegate = self;
-    [self.containerView addSubview:self.offsetTextField];
+    // Textbox for the New Value to Write
+    self.valueTextField = [[UITextField alloc] initWithFrame:CGRectMake(12, 38, 236, 32)];
+    self.valueTextField.text = @"0x1"; // Change this default write value if needed
+    self.valueTextField.font = [UIFont monospacedSystemFontOfSize:13.0 weight:UIFontWeightRegular];
+    self.valueTextField.textColor = [UIColor greenColor];
+    self.valueTextField.backgroundColor = [UIColor colorWithWhite:0.2 alpha:1.0];
+    self.valueTextField.borderStyle = UITextBorderStyleRoundedRect;
+    self.valueTextField.delegate = self;
+    [self.containerView addSubview:self.valueTextField];
     
-    // Apply Button
-    UIButton *applyButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    applyButton.frame = CGRectMake(12, 82, 110, 32);
-    applyButton.backgroundColor = [UIColor systemBlueColor];
-    [applyButton setTitle:@"Apply" forState:UIControlStateNormal];
-    [applyButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    applyButton.layer.cornerRadius = 6.0;
-    applyButton.titleLabel.font = [UIFont boldSystemFontOfSize:13];
-    [applyButton addTarget:self action:@selector(applyAction) forControlEvents:UIControlEventTouchUpInside];
-    [self.containerView addSubview:applyButton];
+    // Write / Apply Patch Button
+    UIButton *patchButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    patchButton.frame = CGRectMake(12, 78, 236, 36);
+    patchButton.backgroundColor = [UIColor systemRedColor];
+    [patchButton setTitle:@"Write Memory" forState:UIControlStateNormal];
+    [patchButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    patchButton.layer.cornerRadius = 6.0;
+    patchButton.titleLabel.font = [UIFont boldSystemFontOfSize:13];
+    [patchButton addTarget:self action:@selector(writeMemoryAction) forControlEvents:UIControlEventTouchUpInside];
+    [self.containerView addSubview:patchButton];
     
-    // Copy Button
-    UIButton *copyButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    copyButton.frame = CGRectMake(134, 82, 114, 32);
-    copyButton.backgroundColor = [UIColor darkGrayColor];
-    [copyButton setTitle:@"Copy Addr" forState:UIControlStateNormal];
-    [copyButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    copyButton.layer.cornerRadius = 6.0;
-    copyButton.titleLabel.font = [UIFont boldSystemFontOfSize:13];
-    [copyButton addTarget:self action:@selector(copyAction) forControlEvents:UIControlEventTouchUpInside];
-    [self.containerView addSubview:copyButton];
-    
-    // Result Label
-    self.resultLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 122, 236, 26)];
-    self.resultLabel.font = [UIFont monospacedSystemFontOfSize:11.0 weight:UIFontWeightBold];
-    self.resultLabel.textColor = [UIColor yellowColor];
-    self.resultLabel.text = @"Ready";
-    [self.containerView addSubview:self.resultLabel];
+    // Status Label
+    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 124, 236, 26)];
+    self.statusLabel.font = [UIFont monospacedSystemFontOfSize:11.0 weight:UIFontWeightBold];
+    self.statusLabel.textColor = [UIColor yellowColor];
+    self.statusLabel.text = @"Ready to patch";
+    [self.containerView addSubview:self.statusLabel];
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
@@ -94,33 +85,39 @@
     return YES;
 }
 
-- (void)applyAction {
-    [self.offsetTextField resignFirstResponder];
-    NSString *text = self.offsetTextField.text;
+- (void)writeMemoryAction {
+    [self.valueTextField resignFirstResponder];
+    NSString *text = self.valueTextField.text;
     
-    unsigned long long offset = 0;
+    // Parse value (supports hex like 0x1234 or plain numbers)
+    unsigned long long valToWrite = 0;
     NSScanner *scanner = [NSScanner scannerWithString:text];
     if ([text hasPrefix:@"0x"] || [text hasPrefix:@"0X"]) {
         scanner.scanLocation = 2;
     }
-    [scanner scanHexLongLong:&offset];
+    [scanner scanHexLongLong:&valToWrite];
     
-    uintptr_t finalAddr = _baseAddress + (uintptr_t)offset;
-    self.resultLabel.text = [NSString stringWithFormat:@"-> 0x%lx", (unsigned long)finalAddr];
-}
-
-- (void)copyAction {
-    [self applyAction];
-    UIPasteboard.generalPasteboard.string = self.resultLabel.text;
+    // Perform memory patch with write permissions (vm_protect)
+    mach_port_t task = mach_task_self();
+    vm_size_t pageSize = vm_page_size;
+    uintptr_t pageAddress = _targetAddress & ~(pageSize - 1);
     
-    // Flash green confirmation
-    UIColor *origColor = self.resultLabel.textColor;
-    self.resultLabel.textColor = [UIColor greenColor];
-    self.resultLabel.text = @"Copied!";
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        self.resultLabel.textColor = origColor;
-        [self applyAction];
-    });
+    kern_return_t kr = vm_protect(task, pageAddress, pageSize, FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+    if (kr != KERN_SUCCESS) {
+        self.statusLabel.textColor = [UIColor redColor];
+        self.statusLabel.text = [NSString stringWithFormat:@"vm_protect failed: %d", kr];
+        return;
+    }
+    
+    // Write a 4-byte integer (change to sizeof(unsigned long long) if writing 8 bytes)
+    uint32_t *addr = (uint32_t *)_targetAddress;
+    *addr = (uint32_t)valToWrite;
+    
+    // Restore protection back to read/execute
+    vm_protect(task, pageAddress, pageSize, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+    
+    self.statusLabel.textColor = [UIColor greenColor];
+    self.statusLabel.text = [NSString stringWithFormat:@"Patched: 0x%llX", valToWrite];
 }
 
 - (void)toggleMinimize {
@@ -137,7 +134,7 @@
             [self.minimizeButton setTitle:@"+" forState:UIControlStateNormal];
         } else {
             self.containerView.frame = self.expandedFrame;
-            self.minimizeButton.frame = CGRectMake(220, 10, 30, 24);
+            self.minimizeButton.frame = CGRectMake(220, 8, 30, 24);
             [self.minimizeButton setTitle:@"−" forState:UIControlStateNormal];
             for (UIView *subview in self.containerView.subviews) {
                 subview.hidden = NO;
@@ -156,8 +153,6 @@ __attribute__((constructor)) static void loadTweak() {
             if (overlayWindow) return;
 
             UIWindowScene *targetScene = nil;
-            
-            // Fixed: proper availability guard layout
             if (@available(iOS 13.0, *)) {
                 for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
                     if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
@@ -178,7 +173,7 @@ __attribute__((constructor)) static void loadTweak() {
             overlayWindow.hidden = NO;
             overlayWindow.userInteractionEnabled = YES;
 
-            TweakFloatingViewController *rootVC = [[TweakFloatingViewController alloc] init];
+            MemoryPatchViewController *rootVC = [[MemoryPatchViewController alloc] init];
             overlayWindow.rootViewController = rootVC;
         });
     });
