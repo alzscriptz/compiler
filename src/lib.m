@@ -1,44 +1,56 @@
 #import <Foundation/Foundation.h>
-#import <mach/mach.h>
+#import <UIKit/UIKit.h>
+#import <mach-o/dyld.h>
 
-/**
- * Patches the CanCollectCoins boolean field at a given BotController instance address.
- * 
- * @param botControllerInstance Pointer to the active BotController instance object in memory.
- * @return BOOL YES if successful, NO otherwise.
- */
-BOOL patchCoinCollection(void *botControllerInstance) {
-    if (botControllerInstance == NULL) {
-        NSLog(@"[-] Error: BotController instance pointer is NULL.");
-        return NO;
-    }
+static UIWindow *overlayWindow = nil;
 
-    // Define the dumped offset
-    uintptr_t coinOffset = 0x0173;
-    
-    // Calculate the exact target address (Instance Base + Field Offset)
-    volatile BOOL *targetAddress = (volatile BOOL *)((uintptr_t)botControllerInstance + coinOffset);
+__attribute__((constructor)) static void loadTweak() {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Delay slightly to ensure the application window scene is fully initialized
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (overlayWindow) return;
 
-    // Value to write (true / 1)
-    BOOL newValue = YES;
+            // Get the base address of the main executable
+            const struct mach_header *header = _dyld_get_image_header(0);
+            uintptr_t baseAddress = (uintptr_t)header;
+            NSString *baseText = [NSString stringWithFormat:@" Base: 0x%lx ", baseAddress];
 
-    // Optional: Make the memory region writable if it's protected
-    mach_port_t task = mach_task_self();
-    vm_size_t pageSize = vm_page_size;
-    vm_address_t pageAddress = (vm_address_t)((uintptr_t)targetAddress & ~(pageSize - 1));
-    
-    kern_return_t kr = vm_protect(task, pageAddress, pageSize, FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
-    if (kr != KERN_SUCCESS) {
-        NSLog(@"[-] Warning: vm_protect failed with error %d. Attempting direct write...", kr);
-    }
+            // Determine appropriate window scene for iOS 13+
+            UIWindowScene *targetScene = nil;
+            if (@available(iOS 13.0, *)) {
+                for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                    if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
+                        targetScene = (UIWindowScene *)scene;
+                        break;
+                    }
+                }
+            }
 
-    // Perform the memory write safely
-    @try {
-        *targetAddress = newValue;
-        NSLog(@"[+] SUCCESS: Wrote 'YES' to BotController + 0x0173 (Address: %p)", (void *)targetAddress);
-        return YES;
-    } @catch (NSException *exception) {
-        NSLog(@"[-] EXCEPTION during memory write: %@ - %@", exception.name, exception.reason);
-        return NO;
-    }
+            // Create the overlay window
+            if (@available(iOS 13.0, *) && targetScene) {
+                overlayWindow = [[UIWindow alloc] initWithWindowScene:targetScene];
+            } else {
+                overlayWindow = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+            }
+
+            overlayWindow.windowLevel = UIWindowLevelAlert + 9999;
+            overlayWindow.hidden = NO;
+            overlayWindow.userInteractionEnabled = NO; // Allows touches to pass through to the app
+
+            UIViewController *rootVC = [[UIViewController alloc] init];
+            overlayWindow.rootViewController = rootVC;
+
+            // Create a small label in the top-left corner (adjusted for standard status bar height)
+            UILabel *baseLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 45, 175, 26)];
+            baseLabel.text = baseText;
+            baseLabel.font = [UIFont monospacedSystemFontOfSize:11.0 weight:UIFontWeightBold];
+            baseLabel.textColor = [UIColor greenColor];
+            baseLabel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.65];
+            baseLabel.layer.cornerRadius = 5.0;
+            baseLabel.clipsToBounds = YES;
+            baseLabel.textAlignment = NSTextAlignmentLeft;
+
+            [rootVC.view addSubview:baseLabel];
+        });
+    });
 }
