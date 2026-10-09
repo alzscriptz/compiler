@@ -16,7 +16,7 @@
 }
 
 - (void)viewDidLoad {
-    [super.viewDidLoad];
+    [super viewDidLoad]; // Fixed: changed from [super.viewDidLoad]
     
     // Get the base address (ASLR slide) of the main executable
     const struct mach_header *header = _dyld_get_image_header(0);
@@ -156,6 +156,8 @@ __attribute__((constructor)) static void loadTweak() {
             if (overlayWindow) return;
 
             UIWindowScene *targetScene = nil;
+            
+            // Fixed: proper availability guard layout
             if (@available(iOS 13.0, *)) {
                 for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
                     if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
@@ -163,11 +165,12 @@ __attribute__((constructor)) static void loadTweak() {
                         break;
                     }
                 }
+                if (targetScene) {
+                    overlayWindow = [[UIWindow alloc] initWithWindowScene:targetScene];
+                }
             }
-
-            if (@available(iOS 13.0, *) && targetScene) {
-                overlayWindow = [[UIWindow alloc] initWithWindowScene:targetScene];
-            } else {
+            
+            if (!overlayWindow) {
                 overlayWindow = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
             }
 
