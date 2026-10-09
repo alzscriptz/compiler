@@ -18,7 +18,7 @@
 - (void)viewDidLoad {
     [super.viewDidLoad];
     
-    // Get the base address (ASLR slide)
+    // Get the base address (ASLR slide) of the main executable
     const struct mach_header *header = _dyld_get_image_header(0);
     _baseAddress = (uintptr_t)header;
     
@@ -35,7 +35,7 @@
     
     // Title Label (Shows Base Address)
     UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 10, 180, 24)];
-    titleLabel.text = [NSString stringWithFormat:@"Base: 0x%lx", _baseAddress];
+    titleLabel.text = [NSString stringWithFormat:@"Base: 0x%lx", (unsigned long)_baseAddress];
     titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
     titleLabel.textColor = [UIColor whiteColor];
     [self.containerView addSubview:titleLabel];
@@ -106,7 +106,7 @@
     [scanner scanHexLongLong:&offset];
     
     uintptr_t finalAddr = _baseAddress + (uintptr_t)offset;
-    self.resultLabel.text = [NSString stringWithFormat:@"-> 0x%lx", finalAddr];
+    self.resultLabel.text = [NSString stringWithFormat:@"-> 0x%lx", (unsigned long)finalAddr];
 }
 
 - (void)copyAction {
@@ -127,7 +127,6 @@
     self.isMinimized = !self.isMinimized;
     [UIView animateWithDuration:0.25 animations:^{
         if (self.isMinimized) {
-            // Shrink down to a small pill shape
             self.containerView.frame = CGRectMake(self.containerView.frame.origin.x, self.containerView.frame.origin.y, 110, 36);
             for (UIView *subview in self.containerView.subviews) {
                 if (subview != self.minimizeButton) {
@@ -137,7 +136,6 @@
             self.minimizeButton.frame = CGRectMake(75, 6, 30, 24);
             [self.minimizeButton setTitle:@"+" forState:UIControlStateNormal];
         } else {
-            // Restore full panel
             self.containerView.frame = self.expandedFrame;
             self.minimizeButton.frame = CGRectMake(220, 10, 30, 24);
             [self.minimizeButton setTitle:@"−" forState:UIControlStateNormal];
@@ -175,7 +173,7 @@ __attribute__((constructor)) static void loadTweak() {
 
             overlayWindow.windowLevel = UIWindowLevelAlert + 9999;
             overlayWindow.hidden = NO;
-            overlayWindow.userInteractionEnabled = YES; // Required for tapping buttons and typing
+            overlayWindow.userInteractionEnabled = YES;
 
             TweakFloatingViewController *rootVC = [[TweakFloatingViewController alloc] init];
             overlayWindow.rootViewController = rootVC;
