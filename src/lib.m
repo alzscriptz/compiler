@@ -1,3 +1,4 @@
+
 #import <UIKit/UIKit.h>
 #import <mach-o/dyld.h>
 #import <dlfcn.h>
@@ -17,7 +18,7 @@
     [super viewDidLoad];
     self.isMinimized = NO;
     
-    // Main Container Frame (Fixed parenthesis syntax)
+    // Main Container Frame
     self.mainView = [[UIView alloc] initWithFrame:CGRectMake(50, 100, 260, 210)];
     self.mainView.backgroundColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:0.9];
     self.mainView.layer.cornerRadius = 12;
@@ -114,15 +115,15 @@
         *(int *)realCoinsAddress = targetCoins;
     }
     
-    if (baseAddress != 0 && targetGers > 0) {
+    if (baseAddress != 0 && targetGems > 0) { // Fixed typo here
         *(int *)realGemsAddress = targetGems;
     }
     
     NSLog(@"[ModMenu] Base: 0x%lx | Coins -> Real Addr: 0x%lx (%d)", (unsigned long)baseAddress, (unsigned long)realCoinsAddress, targetCoins);
 }
 
-// Dismiss keyboard on tap outside
-- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent)event {
+// Dismiss keyboard on tap outside (Fixed UIEvent pointer syntax)
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     [self.view endEditing:YES];
 }
 
@@ -146,8 +147,12 @@ __attribute__((constructor)) static void initCheatMenu() {
                 }
             }
         }
+        
         if (!window) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             window = [[UIApplication sharedApplication] keyWindow];
+#pragma clang diagnostic pop
         }
         
         if (window) {
