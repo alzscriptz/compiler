@@ -37,6 +37,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 @property(nonatomic,strong) UILabel *speedValueLabel;
 @property(nonatomic,strong) UITextField *configNameField;
 @property(nonatomic,strong) UIScrollView *configScroll;
+@property(nonatomic,strong) UIScrollView *mainScroll;
 @property(nonatomic,strong) NSMutableDictionary *settings;
 @property(nonatomic,strong) NSMutableArray *configs;
 @property(nonatomic,strong) NSMutableArray<UIButton *> *navButtons;
@@ -249,6 +250,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [self.panel addSubview:self.page];
 
     self.statusLabel = [self label:@"" size:11 color:self.mutedColor];
+    self.statusLabel.hidden = YES;
     [self.panel addSubview:self.statusLabel];
 
     self.miniButton = [self button:@"â¦  K1sUI     â"];
@@ -354,10 +356,12 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     if (W <= 0 || H <= 0) return;
 
     if ([self.currentPage isEqualToString:@"Main"]) {
-        UIView *farm = [self.page viewWithTag:710];
-        UIView *boost = [self.page viewWithTag:711];
-        UIView *sliderCard = [self.page viewWithTag:712];
-        UIView *reset = [self.page viewWithTag:713];
+        self.mainScroll.frame = self.page.bounds;
+        CGFloat W = self.mainScroll.bounds.size.width;
+        UIView *farm = [self.mainScroll viewWithTag:710];
+        UIView *boost = [self.mainScroll viewWithTag:711];
+        UIView *sliderCard = [self.mainScroll viewWithTag:712];
+        UIView *reset = [self.mainScroll viewWithTag:713];
         CGFloat gap = 12.0;
         CGFloat toggleH = MIN(72.0, MAX(58.0, H * 0.16));
         CGFloat sliderH = MIN(104.0, MAX(88.0, H * 0.23));
@@ -367,6 +371,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         boost.frame = CGRectMake(0, toggleH + gap, W, toggleH);
         sliderCard.frame = CGRectMake(0, (toggleH + gap) * 2, W, sliderH);
         reset.frame = CGRectMake(0, (toggleH + gap) * 2 + sliderH + gap, W, resetH);
+        self.mainScroll.contentSize = CGSizeMake(W, CGRectGetMaxY(reset.frame) + 12.0);
 
         [self layoutToggleCard:farm width:W height:toggleH];
         [self layoutToggleCard:boost width:W height:toggleH];
@@ -459,6 +464,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.speedValueLabel = nil;
     self.configNameField = nil;
     self.configScroll = nil;
+    self.mainScroll = nil;
     [self.positionButtons removeAllObjects];
 }
 
@@ -490,13 +496,17 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 #pragma mark - Main page
 
 - (void)buildMainPage {
+    self.mainScroll = [[UIScrollView alloc] initWithFrame:CGRectZero];
+    self.mainScroll.alwaysBounceVertical = YES;
+    self.mainScroll.showsVerticalScrollIndicator = YES;
+    [self.page addSubview:self.mainScroll];
     UIView *farm = [self card];
     farm.tag = 710;
     [self addCardTitle:@"Farm Toggle" toCard:farm];
     self.farmSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
     [self.farmSwitch addTarget:self action:@selector(farmChanged:) forControlEvents:UIControlEventValueChanged];
     [farm addSubview:self.farmSwitch];
-    [self.page addSubview:farm];
+    [self.mainScroll addSubview:farm];
 
     UIView *boost = [self card];
     boost.tag = 711;
@@ -504,7 +514,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.boostSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
     [self.boostSwitch addTarget:self action:@selector(boostChanged:) forControlEvents:UIControlEventValueChanged];
     [boost addSubview:self.boostSwitch];
-    [self.page addSubview:boost];
+    [self.mainScroll addSubview:boost];
 
     UIView *sliderCard = [self card];
     sliderCard.tag = 712;
@@ -522,7 +532,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.speedSlider.maximumTrackTintColor = [UIColor colorWithWhite:0.55 alpha:0.24];
     [self.speedSlider addTarget:self action:@selector(speedChanged:) forControlEvents:UIControlEventValueChanged];
     [sliderCard addSubview:self.speedSlider];
-    [self.page addSubview:sliderCard];
+    [self.mainScroll addSubview:sliderCard];
 
     UIView *reset = [self card];
     reset.tag = 713;
@@ -532,7 +542,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     resetButton.backgroundColor = self.blue;
     [resetButton addTarget:self action:@selector(resetSettings) forControlEvents:UIControlEventTouchUpInside];
     [reset addSubview:resetButton];
-    [self.page addSubview:reset];
+    [self.mainScroll addSubview:reset];
 
     [self applySettingsToControls];
 }
@@ -558,24 +568,24 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 - (void)farmChanged:(UISwitch *)sender {
     self.settings[@"farm"] = @(sender.isOn);
     [self saveCurrentControls];
-    self.statusLabel.text = @"Farm toggle saved";
+    // Status messages intentionally hidden.
 }
 - (void)boostChanged:(UISwitch *)sender {
     self.settings[@"boost"] = @(sender.isOn);
     [self saveCurrentControls];
-    self.statusLabel.text = @"Speed toggle saved";
+    // Status messages intentionally hidden.
 }
 - (void)speedChanged:(UISlider *)sender {
     self.settings[@"speed"] = @(sender.value);
     self.speedValueLabel.text = [NSString stringWithFormat:@"%ld", (long)lrintf(sender.value)];
     [self saveCurrentControls];
-    self.statusLabel.text = @"Slider value saved";
+    // Status messages intentionally hidden.
 }
 - (void)resetSettings {
     self.settings = [@{@"farm": @(YES), @"boost": @(NO), @"speed": @50} mutableCopy];
     [self applySettingsToControls];
     [self saveCurrentControls];
-    self.statusLabel.text = @"Demo settings reset";
+    // Status messages intentionally hidden.
 }
 
 #pragma mark - Settings: minimized-pill placement
@@ -602,7 +612,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [[NSUserDefaults standardUserDefaults] setInteger:self.miniPosition forKey:@"K1sUI.MiniPosition"];
     [self updatePositionButtonStyles];
     [self layoutMiniButton];
-    self.statusLabel.text = @"Minimized position updated";
+
 }
 
 - (void)updatePositionButtonStyles {
@@ -657,7 +667,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [self.configNameField resignFirstResponder];
     NSString *name = [self.configNameField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (name.length == 0) {
-        self.statusLabel.text = @"Enter a config title first";
+
         return;
     }
     [self saveCurrentControls];
@@ -670,7 +680,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [self persistConfigs];
     self.configNameField.text = @"";
     [self refreshConfigs];
-    self.statusLabel.text = @"Configuration saved";
+
 }
 
 - (void)refreshConfigs {
@@ -728,14 +738,14 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     NSDictionary *config = self.configs[index];
     NSDictionary *values = config[@"settings"];
     if (![values isKindOfClass:[NSDictionary class]]) {
-        self.statusLabel.text = @"This config is invalid";
+
         return;
     }
     self.settings = [values mutableCopy];
     [[NSUserDefaults standardUserDefaults] setObject:self.settings forKey:K1SettingsKey];
     [self showPage:@"Main"];
     [self applySettingsToControls];
-    self.statusLabel.text = [NSString stringWithFormat:@"Loaded %@", config[@"name"]];
+
 }
 
 - (void)deleteConfig:(UIButton *)sender {
@@ -744,7 +754,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [self.configs removeObjectAtIndex:index];
     [self persistConfigs];
     [self refreshConfigs];
-    self.statusLabel.text = @"Configuration deleted";
+
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
@@ -794,7 +804,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 
 - (void)copyDiscordLink {
     [UIPasteboard generalPasteboard].string = K1DiscordURL;
-    self.statusLabel.text = @"Discord invite copied";
+
 }
 
 #pragma mark - Minimize / restore and touch passthrough
