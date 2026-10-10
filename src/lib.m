@@ -845,14 +845,13 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [dc addTarget:self action:@selector(copyDiscordLink) forControlEvents:UIControlEventTouchUpInside];
     UILabel *t=[self label:@"Discord" size:14 color:[UIColor whiteColor]]; t.tag=1001; [dc addSubview:t];
     UILabel *st=[self label:@"Tap to copy invite link" size:11 color:self.mutedColor]; st.tag=1002; [dc addSubview:st];
-    // FIXED: changed from imageNamed: to systemImageNamed: for SF Symbols
     UIImageView *ci=[[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"doc.on.doc"]];
     ci.tintColor=self.mutedColor; ci.contentMode=UIViewContentModeScaleAspectFit; ci.tag=1003; [dc addSubview:ci];
     [self.page addSubview:dc];
 }
 - (void)copyDiscordLink { [UIPasteboard generalPasteboard].string=K1DiscordURL; }
 
-#pragma mark - minimize / passthrough (FIXED TOUCH PASS-THROUGH)
+#pragma mark - minimize / passthrough
 
 - (void)minimizeUI { self.minimized=YES; self.panel.hidden=YES; self.miniButton.hidden=NO; [self layoutMiniButton]; }
 - (void)showUI { self.minimized=NO; self.miniButton.hidden=YES; self.panel.hidden=NO; }
@@ -865,7 +864,6 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         if (CGRectContainsPoint(self.miniButton.bounds, p)) return [self.miniButton hitTest:p withEvent:event];
         return nil;
     }
-    // Allow touches to pass through to the game if they are outside the panel window
     CGPoint panelPoint = [self.panel convertPoint:point fromView:self];
     if (!CGRectContainsPoint(self.panel.bounds, panelPoint)) {
         return nil;
@@ -878,13 +876,14 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 #pragma mark entry & initialization hook
 #pragma mark =====================================================================
 
+#if K1_HAVE_DOBBY
 static void *(*orig_il2cpp_init)(const char *domain_name) = NULL;
 static void *hook_il2cpp_init(const char *domain_name) {
     void *ret = orig_il2cpp_init(domain_name);
-    // Safe initialization callback once il2cpp runtime is fully loaded
     [K1Cheat start];
     return ret;
 }
+#endif
 
 static void K1Install(NSUInteger attempt) {
     if(![NSThread isMainThread]){ dispatch_async(dispatch_get_main_queue(),^{ K1Install(attempt); }); return; }
@@ -904,13 +903,16 @@ static void K1Install(NSUInteger attempt) {
 __attribute__((constructor))
 static void K1Entry(void) {
     @autoreleasepool {
+#if K1_HAVE_DOBBY
         void *initSym = dlsym(RTLD_DEFAULT, "il2cpp_init");
-        if (initSym && K1_HAVE_DOBBY) {
+        if (initSym) {
             DobbyHook(initSym, (void *)hook_il2cpp_init, (void **)&orig_il2cpp_init);
         } else {
-            // Fallback if il2cpp_init cannot be hooked
             [K1Cheat start];
         }
+#else
+        [K1Cheat start];
+#endif
         dispatch_async(dispatch_get_main_queue(), ^{ K1Install(0); });
     }
 }
