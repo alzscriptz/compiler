@@ -60,7 +60,7 @@ typedef uint32_t (*UDMethodGetToken)(UDMethod);
 @property(nonatomic, strong) UITextView *outputView;
 @property(nonatomic, strong) UIButton *minimizeButton;
 @property(nonatomic, strong) UIButton *dumpButton;
-@property(nonatomic, strong) UIButton *copyAllButton;
+@property(nonatomic, strong) UIButton *allCopyActionButton;
 @property(nonatomic, strong) UIButton *clearButton;
 
 @property(nonatomic, copy) NSString *fullDump;
@@ -228,11 +228,11 @@ static NSString *UDString(const char *s) {
               forControlEvents:UIControlEventTouchUpInside];
     [self.panel addSubview:self.dumpButton];
 
-    self.copyAllButton = [self makeButton:@"Copy All"
+    self.allCopyActionButton = [self makeButton:@"Copy All"
                                      frame:CGRectMake(16 + buttonW, buttonY, buttonW, 34)];
-    [self.copyAllButton addTarget:self action:@selector(copyAll)
+    [self.allCopyActionButton addTarget:self action:@selector(copyAll)
                  forControlEvents:UIControlEventTouchUpInside];
-    [self.panel addSubview:self.copyAllButton];
+    [self.panel addSubview:self.allCopyActionButton];
 
     self.clearButton = [self makeButton:@"Clear"
                                    frame:CGRectMake(22 + buttonW * 2, buttonY, buttonW, 34)];
