@@ -10,8 +10,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <mach/mach.h>
+#include <mach/vm_region.h>
 #include <mach-o/dyld.h>
 #include <dispatch/dispatch.h>
 
@@ -356,7 +358,10 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 @property(nonatomic,strong) UITextField *configNameField;
 @property(nonatomic,strong) UIScrollView *configScroll,*mainScroll;
 @property(nonatomic,strong) NSMutableDictionary *settings;
-@property(nonatomic,strong) NSMutableArray *configs,*mainCards,*navButtons,*positionButtons;
+@property(nonatomic,strong) NSMutableArray<NSDictionary *> *configs;
+@property(nonatomic,strong) NSMutableArray<UIView *> *mainCards;
+@property(nonatomic,strong) NSMutableArray<UIButton *> *navButtons;
+@property(nonatomic,strong) NSMutableArray<UIButton *> *positionButtons;
 @property(nonatomic,copy) NSString *currentPage;
 @property(nonatomic,assign) K1MiniPosition miniPosition;
 @property(nonatomic,assign) BOOL minimized;
@@ -530,10 +535,10 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
             if(isSlider){
                 t.frame=CGRectMake(16,10,W-92,25);
                 UILabel *v=[c viewWithTag:1002]; v.frame=CGRectMake(W-68,10,48,25);
-                UISlider *s=[c viewWithTag:c.tag]; s.frame=CGRectMake(14,48,W-28,30);
+                UISlider *s=(UISlider *)[c viewWithTag:c.tag]; s.frame=CGRectMake(14,48,W-28,30);
             } else {
                 t.frame=CGRectMake(17,0,MAX(80,W-104),h);
-                UISwitch *s=[c viewWithTag:c.tag];
+                UISwitch *s=(UISwitch *)[c viewWithTag:c.tag];
                 s.onTintColor=self.blue; s.thumbTintColor=[UIColor whiteColor];
                 s.backgroundColor=[UIColor colorWithWhite:0.55 alpha:0.30]; s.layer.cornerRadius=16;
                 s.frame=CGRectMake(W-67,(h-31)/2,51,31);
@@ -592,8 +597,10 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     else if([name isEqualToString:@"Config Profiles"]) [self buildConfigPage];
     else if([name isEqualToString:@"Credits"]) [self buildCreditsPage];
     NSArray *names=@[@"Main",@"Settings",@"Config Profiles",@"Credits"];
-    for(NSInteger i=0;i<self.navButtons.count;i++)
-        self.navButtons[i].backgroundColor=[names[i] isEqualToString:name]?self.blue:self.cardColor;
+    for(NSInteger i=0;i<self.navButtons.count;i++){
+        UIButton *nav=self.navButtons[i];
+        nav.backgroundColor=[names[i] isEqualToString:name]?self.blue:self.cardColor;
+    }
     [self setNeedsLayout];
 }
 - (void)navigate:(UIButton *)s {
