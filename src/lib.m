@@ -198,7 +198,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     appTitle.font = [UIFont boldSystemFontOfSize:22];
     [self.header addSubview:appTitle];
 
-    UILabel *subtitle = [self label:@"Universal Hub" size:12 color:self.mutedColor];
+    UILabel *subtitle = [self label:@"Discord link" size:12 color:self.mutedColor];
     subtitle.tag = 204;
     [self.header addSubview:subtitle];
 
