@@ -19,7 +19,6 @@ void writeLog(NSString *format, ...) {
             NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:filePath];
             if (fileHandle) {
                 [fileHandle seekToEndOfFile];
-                [fileHandle dataUsingEncoding:NSUTF8StringEncoding];
                 [fileHandle writeData:[logEntry dataUsingEncoding:NSUTF8StringEncoding]];
                 [fileHandle closeFile];
             } else {
@@ -86,7 +85,6 @@ void *init_il2cpp_hook(void *arg) {
         // Test finding the Character class from metadata
         Il2CppClass *characterClass = il2cpp_class_from_name("Assembly-CSharp", "", "Character");
         if (!characterClass) {
-            // Try empty assembly name if Assembly-CSharp fails
             characterClass = il2cpp_class_from_name("", "", "Character");
         }
         
