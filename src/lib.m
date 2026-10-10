@@ -1,8 +1,11 @@
 
 /*
- K1sUI
- Universal Hub - UIKit + Foundation
- Single-file Objective-C UI overlay
+ [ K1sUI ]
+
+ Universal Hub - Objective-C
+ UIKit + Foundation + QuartzCore
+ Single-file implementation; no ViewController required.
+ ARC enabled.
 */
 
 #import <UIKit/UIKit.h>
@@ -10,9 +13,9 @@
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
-static NSString * const K1sUIConfigKey = @"K1sUI.SavedConfigurations";
-static NSString * const K1sUISettingsKey = @"K1sUI.DemoSettings";
-static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
+static NSString * const K1sUISettingsKey = @"K1sUI.Settings";
+static NSString * const K1sUIConfigsKey = @"K1sUI.Configs";
+static NSString * const K1sUIDiscordURL = @"https://discord.gg/DKdAG9VTjh";
 
 @interface K1sUI : UIView <UITextFieldDelegate>
 @property(nonatomic,strong) UIView *panel;
@@ -20,17 +23,18 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
 @property(nonatomic,strong) UIView *sidebar;
 @property(nonatomic,strong) UIView *page;
 @property(nonatomic,strong) UIButton *miniButton;
+@property(nonatomic,strong) UILabel *pageTitle;
+@property(nonatomic,strong) UILabel *status;
 @property(nonatomic,strong) UITextField *configName;
 @property(nonatomic,strong) UISwitch *farmSwitch;
-@property(nonatomic,strong) UISwitch *speedSwitch;
+@property(nonatomic,strong) UISwitch *boostSwitch;
 @property(nonatomic,strong) UISlider *speedSlider;
 @property(nonatomic,strong) UILabel *speedValue;
-@property(nonatomic,strong) UILabel *status;
-@property(nonatomic,strong) UIStackView *configList;
+@property(nonatomic,strong) UIScrollView *configScroll;
+@property(nonatomic,strong) NSMutableDictionary *settings;
+@property(nonatomic,strong) NSMutableArray *configs;
 @property(nonatomic,strong) NSMutableArray<UIButton *> *navButtons;
 @property(nonatomic,copy) NSString *currentPage;
-@property(nonatomic,strong) NSMutableDictionary *settings;
-@property(nonatomic,strong) NSMutableArray<NSDictionary *> *configs;
 @property(nonatomic,assign) BOOL minimized;
 @end
 
@@ -38,32 +42,25 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
 
 #pragma mark - Theme
 
-- (UIColor *)background {
-    return [UIColor colorWithRed:10/255.0 green:20/255.0
-                            blue:40/255.0 alpha:0.94];
+- (UIColor *)blue {
+    return [UIColor colorWithRed:0.12 green:0.37 blue:1.0 alpha:1.0];
+}
+
+- (UIColor *)panelColor {
+    return [UIColor colorWithRed:0.035 green:0.065 blue:0.13 alpha:0.96];
 }
 
 - (UIColor *)cardColor {
-    return [UIColor colorWithRed:19/255.0 green:34/255.0
-                            blue:62/255.0 alpha:0.92];
+    return [UIColor colorWithRed:0.07 green:0.12 blue:0.22 alpha:0.95];
 }
 
-- (UIColor *)blue {
-    return [UIColor colorWithRed:35/255.0 green:103/255.0
-                            blue:255/255.0 alpha:1];
+- (UIColor *)mutedColor {
+    return [UIColor colorWithRed:0.61 green:0.72 blue:0.91 alpha:1.0];
 }
 
-- (UIColor *)muted {
-    return [UIColor colorWithRed:151/255.0 green:180/255.0
-                            blue:222/255.0 alpha:1];
-}
-
-- (UIColor *)lineColor {
-    return [self.blue colorWithAlphaComponent:0.32];
-}
-
-- (UILabel *)label:(NSString *)text size:(CGFloat)size
-             color:(UIColor *)color {
+- (UILabel *)makeLabel:(NSString *)text
+                  size:(CGFloat)size
+                 color:(UIColor *)color {
     UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
     label.text = text;
     label.font = [UIFont systemFontOfSize:size
@@ -75,53 +72,66 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
     return label;
 }
 
-- (UIButton *)symbolButton:(NSString *)symbol title:(NSString *)title {
+- (UIButton *)makeButton:(NSString *)title {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-
-    UIImage *image = [UIImage systemImageNamed:symbol];
-    if (image) {
-        [button setImage:image forState:UIControlStateNormal];
-        button.tintColor = self.muted;
-    }
-
     [button setTitle:title forState:UIControlStateNormal];
     [button setTitleColor:UIColor.whiteColor
                  forState:UIControlStateNormal];
     button.titleLabel.font =
         [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
-    button.layer.cornerRadius = 12;
+    button.backgroundColor = self.cardColor;
+    button.layer.cornerRadius = 10;
     button.clipsToBounds = YES;
     return button;
 }
 
-- (UIView *)card:(CGRect)frame {
-    UIView *view = [[UIView alloc] initWithFrame:frame];
-    view.backgroundColor = self.cardColor;
-    view.layer.cornerRadius = 16;
-    view.layer.borderWidth = 1;
-    view.layer.borderColor = self.lineColor.CGColor;
-    view.clipsToBounds = YES;
-    return view;
+- (UIButton *)makeIconButton:(NSString *)symbol title:(NSString *)title {
+    UIButton *button = [self makeButton:title];
+    UIImage *image = [UIImage systemImageNamed:symbol];
+
+    if (image != nil) {
+        [button setImage:image forState:UIControlStateNormal];
+        button.tintColor = UIColor.whiteColor;
+        button.imageView.contentMode = UIViewContentModeScaleAspectFit;
+    }
+
+    button.contentHorizontalAlignment =
+        UIControlContentHorizontalAlignmentLeft;
+    button.titleEdgeInsets = UIEdgeInsetsMake(0, 10, 0, 0);
+    button.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 4);
+    return button;
 }
 
-- (void)styleCardLabel:(UIView *)card
-                 title:(NSString *)title
-              subtitle:(NSString *)subtitle {
-    UILabel *heading = [self label:title size:14 color:UIColor.whiteColor];
-    heading.frame = CGRectMake(15, 12, card.bounds.size.width - 30, 23);
-    heading.tag = 501;
+- (UIView *)makeCard:(NSString *)title
+            subtitle:(NSString *)subtitle {
+    UIView *card = [[UIView alloc] initWithFrame:CGRectZero];
+    card.backgroundColor = self.cardColor;
+    card.layer.cornerRadius = 15;
+    card.layer.borderWidth = 1;
+    card.layer.borderColor =
+        [self.blue colorWithAlphaComponent:0.27].CGColor;
+    card.clipsToBounds = YES;
+
+    UILabel *heading = [self makeLabel:title
+                                  size:14
+                                 color:UIColor.whiteColor];
+    heading.tag = 101;
     [card addSubview:heading];
 
-    UILabel *detail = [self label:subtitle size:11 color:self.muted];
-    detail.frame = CGRectMake(15, 36, card.bounds.size.width - 30, 19);
-    detail.tag = 502;
+    UILabel *detail = [self makeLabel:subtitle
+                                 size:11
+                                color:self.mutedColor];
+    detail.tag = 102;
     [card addSubview:detail];
+
+    return card;
 }
 
-#pragma mark - Startup
+#pragma mark - Initialization
 
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
+
     if (self) {
         self.backgroundColor = UIColor.clearColor;
         self.autoresizingMask =
@@ -130,120 +140,117 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
 
         NSDictionary *savedSettings =
             [[NSUserDefaults standardUserDefaults]
-                dictionaryForKey:K1sUISettingsKey];
+             dictionaryForKey:K1sUISettingsKey];
 
         self.settings = savedSettings
             ? [savedSettings mutableCopy]
             : [@{
                 @"farm": @YES,
-                @"speedBoost": @NO,
+                @"boost": @NO,
                 @"speed": @50
             } mutableCopy];
 
         NSArray *savedConfigs =
             [[NSUserDefaults standardUserDefaults]
-                arrayForKey:K1sUIConfigKey];
+             arrayForKey:K1sUIConfigsKey];
 
         self.configs = savedConfigs
             ? [savedConfigs mutableCopy]
             : [NSMutableArray array];
 
-        self.currentPage = @"Main";
         self.navButtons = [NSMutableArray array];
+        self.currentPage = @"Main";
 
-        [self buildBase];
-        [self applySettings];
+        [self buildUI];
     }
+
     return self;
 }
 
-#pragma mark - Main Window
-
-- (void)buildBase {
+- (void)buildUI {
     self.panel = [[UIView alloc] init];
-    self.panel.backgroundColor = self.background;
+    self.panel.backgroundColor = self.panelColor;
     self.panel.layer.cornerRadius = 27;
     self.panel.layer.borderWidth = 1.2;
     self.panel.layer.borderColor =
-        [self.blue colorWithAlphaComponent:0.85].CGColor;
+        [self.blue colorWithAlphaComponent:0.9].CGColor;
     self.panel.clipsToBounds = YES;
     [self addSubview:self.panel];
 
     self.header = [[UIView alloc] init];
     self.header.backgroundColor =
-        [UIColor colorWithRed:13/255.0 green:25/255.0
-                        blue:48/255.0 alpha:0.98];
+        [UIColor colorWithRed:0.045 green:0.08 blue:0.16 alpha:0.98];
     [self.panel addSubview:self.header];
 
-    UIView *appIcon = [[UIView alloc] init];
-    appIcon.backgroundColor = self.blue;
-    appIcon.layer.cornerRadius = 13;
-    appIcon.clipsToBounds = YES;
-    appIcon.tag = 101;
-    [self.header addSubview:appIcon];
+    UIView *logo = [[UIView alloc] init];
+    logo.tag = 201;
+    logo.backgroundColor = self.blue;
+    logo.layer.cornerRadius = 13;
+    [self.header addSubview:logo];
 
-    UIImageView *logo = [[UIImageView alloc]
+    UIImageView *logoImage = [[UIImageView alloc]
         initWithImage:[UIImage systemImageNamed:@"sparkles"]];
-    logo.tintColor = UIColor.whiteColor;
-    logo.contentMode = UIViewContentModeScaleAspectFit;
-    logo.tag = 102;
-    [appIcon addSubview:logo];
+    logoImage.tintColor = UIColor.whiteColor;
+    logoImage.contentMode = UIViewContentModeScaleAspectFit;
+    logoImage.tag = 202;
+    [logo addSubview:logoImage];
 
-    UILabel *title = [self label:@"K1sUI" size:23
-                            color:UIColor.whiteColor];
-    title.font = [UIFont boldSystemFontOfSize:23];
-    title.tag = 103;
-    [self.header addSubview:title];
+    UILabel *appTitle = [self makeLabel:@"K1sUI"
+                                   size:22
+                                  color:UIColor.whiteColor];
+    appTitle.font = [UIFont boldSystemFontOfSize:22];
+    appTitle.tag = 203;
+    [self.header addSubview:appTitle];
 
-    UILabel *subtitle = [self label:@"Universal Hub" size:12
-                               color:self.muted];
-    subtitle.tag = 104;
-    [self.header addSubview:subtitle];
+    UILabel *appSubtitle = [self makeLabel:@"Universal Hub"
+                                      size:12
+                                     color:self.mutedColor];
+    appSubtitle.tag = 204;
+    [self.header addSubview:appSubtitle];
 
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
     [close setImage:[UIImage systemImageNamed:@"xmark"]
            forState:UIControlStateNormal];
-    close.tintColor = [UIColor colorWithRed:1 green:0.3
-                                      blue:0.43 alpha:1];
-    close.backgroundColor =
-        [self.blue colorWithAlphaComponent:0.10];
-    close.layer.cornerRadius = 18;
-    close.tag = 105;
-    [close addTarget:self action:@selector(minimizeUI)
+    close.tintColor =
+        [UIColor colorWithRed:1 green:0.3 blue:0.43 alpha:1];
+    close.tag = 205;
+    [close addTarget:self
+              action:@selector(minimizeUI)
     forControlEvents:UIControlEventTouchUpInside];
     [self.header addSubview:close];
 
     UIView *headerLine = [[UIView alloc] init];
-    headerLine.backgroundColor = self.lineColor;
-    headerLine.tag = 106;
+    headerLine.tag = 206;
+    headerLine.backgroundColor =
+        [self.blue colorWithAlphaComponent:0.3];
     [self.header addSubview:headerLine];
 
     self.sidebar = [[UIView alloc] init];
     self.sidebar.backgroundColor =
-        [UIColor colorWithRed:11/255.0 green:22/255.0
-                        blue:42/255.0 alpha:0.97];
+        [UIColor colorWithRed:0.04 green:0.07 blue:0.13 alpha:0.98];
     [self.panel addSubview:self.sidebar];
 
-    UIView *divider = [[UIView alloc] init];
-    divider.backgroundColor = self.lineColor;
-    divider.tag = 107;
-    [self.panel addSubview:divider];
+    UIView *separator = [[UIView alloc] init];
+    separator.tag = 207;
+    separator.backgroundColor =
+        [self.blue colorWithAlphaComponent:0.3];
+    [self.panel addSubview:separator];
 
-    NSArray *titles = @[@"Main", @"Settings",
-                        @"Config Profiles", @"Credits"];
+    NSArray *names = @[@"Main", @"Settings",
+                       @"Config Profiles", @"Credits"];
     NSArray *symbols = @[@"house.fill", @"gearshape.fill",
                          @"folder.fill", @"star.fill"];
 
-    for (NSInteger i = 0; i < titles.count; i++) {
-        UIButton *button = [self symbolButton:symbols[i] title:titles[i]];
-        button.contentHorizontalAlignment =
-            UIControlContentHorizontalAlignmentLeft;
-        button.titleEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 0);
-        button.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 0);
-        button.backgroundColor = i == 0 ? self.blue : self.cardColor;
+    for (NSInteger i = 0; i < names.count; i++) {
+        UIButton *button =
+            [self makeIconButton:symbols[i] title:names[i]];
         button.tag = i;
-        [button addTarget:self action:@selector(navigate:)
+        button.backgroundColor = (i == 0) ? self.blue : self.cardColor;
+
+        [button addTarget:self
+                   action:@selector(navigate:)
          forControlEvents:UIControlEventTouchUpInside];
+
         [self.sidebar addSubview:button];
         [self.navButtons addObject:button];
     }
@@ -252,238 +259,311 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
     self.page.backgroundColor = UIColor.clearColor;
     [self.panel addSubview:self.page];
 
-    self.status = [self label:@"Ready" size:11 color:self.muted];
+    self.pageTitle = [self makeLabel:@"Main"
+                                size:22
+                               color:UIColor.whiteColor];
+    self.pageTitle.font = [UIFont boldSystemFontOfSize:22];
+    [self.panel addSubview:self.pageTitle];
+
+    self.status = [self makeLabel:@"Ready"
+                             size:11
+                            color:self.mutedColor];
     [self.panel addSubview:self.status];
 
-    // Small bottom-right mini window.
-    self.miniButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [self.miniButton setTitle:@"  ✦  K1sUI     ↗  "
-                     forState:UIControlStateNormal];
-    [self.miniButton setTitleColor:UIColor.whiteColor
-                          forState:UIControlStateNormal];
-    self.miniButton.titleLabel.font =
-        [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
-    self.miniButton.backgroundColor = self.background;
-    self.miniButton.layer.cornerRadius = 19;
+    // Floating minimized window.
+    self.miniButton = [self makeButton:@"✦  K1sUI    ↗"];
+    self.miniButton.backgroundColor = self.panelColor;
+    self.miniButton.layer.cornerRadius = 18;
     self.miniButton.layer.borderWidth = 1;
     self.miniButton.layer.borderColor = self.blue.CGColor;
     self.miniButton.hidden = YES;
-    [self.miniButton addTarget:self action:@selector(showUI)
+    [self.miniButton addTarget:self
+                        action:@selector(showUI)
               forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:self.miniButton];
 
     [self showPage:@"Main"];
 }
 
+#pragma mark - Layout
+
 - (void)layoutSubviews {
     [super layoutSubviews];
 
     CGFloat W = CGRectGetWidth(self.bounds);
     CGFloat H = CGRectGetHeight(self.bounds);
-    if (W < 1 || H < 1) return;
+    if (W <= 0 || H <= 0) return;
 
-    // Panel occupies approximately 80% of the screen.
-    CGFloat panelW = W * 0.80;
-    CGFloat panelH = H * 0.80;
-    panelW = MIN(panelW, 850);
-    panelH = MIN(panelH, 680);
+    CGFloat panelW = MIN(W * 0.80, 900);
+    CGFloat panelH = MIN(H * 0.80, 700);
 
-    self.panel.frame = CGRectMake((W-panelW)/2, (H-panelH)/2,
+    self.panel.frame = CGRectMake((W-panelW)/2,
+                                  (H-panelH)/2,
                                   panelW, panelH);
 
-    // The mini rectangle sits in the bottom-right corner.
-    CGFloat miniW = MIN(205, W - 24);
-    self.miniButton.frame =
-        CGRectMake(W - miniW - 12, H - 65, miniW, 45);
+    self.miniButton.frame = CGRectMake(
+        MAX(12, W-185-12), MAX(12, H-57), MIN(185, W-24), 43);
 
-    CGFloat headerH = MIN(76, panelH * 0.15);
+    CGFloat headerH = 70;
+    CGFloat sideW = panelW * 0.245;
+
     self.header.frame = CGRectMake(0, 0, panelW, headerH);
+    self.sidebar.frame =
+        CGRectMake(0, headerH, sideW, panelH-headerH);
 
-    UIView *icon = [self.header viewWithTag:101];
-    UIView *logo = [icon viewWithTag:102];
-    UIView *title = [self.header viewWithTag:103];
-    UIView *subtitle = [self.header viewWithTag:104];
-    UIView *close = [self.header viewWithTag:105];
-    UIView *headerLine = [self.header viewWithTag:106];
+    UIView *logo = [self.header viewWithTag:201];
+    UIView *logoImage = [logo viewWithTag:202];
+    UIView *appTitle = [self.header viewWithTag:203];
+    UIView *subtitle = [self.header viewWithTag:204];
+    UIView *close = [self.header viewWithTag:205];
+    UIView *headerLine = [self.header viewWithTag:206];
+    UIView *separator = [self.panel viewWithTag:207];
 
-    icon.frame = CGRectMake(14, (headerH-44)/2, 44, 44);
-    logo.frame = CGRectMake(9, 9, 26, 26);
-    title.frame = CGRectMake(69, 12, panelW-145, 30);
-    subtitle.frame = CGRectMake(70, 41, panelW-155, 20);
-    close.frame = CGRectMake(panelW-52, 14, 38, 38);
+    logo.frame = CGRectMake(13, 13, 44, 44);
+    logoImage.frame = CGRectMake(9, 9, 26, 26);
+    appTitle.frame = CGRectMake(69, 10, panelW-135, 30);
+    subtitle.frame = CGRectMake(70, 39, panelW-145, 20);
+    close.frame = CGRectMake(panelW-49, 13, 36, 36);
     headerLine.frame = CGRectMake(0, headerH-1, panelW, 1);
 
-    CGFloat sideW = panelW * 0.235;
-    CGFloat bodyH = panelH - headerH;
+    separator.frame = CGRectMake(sideW, headerH, 1, panelH-headerH);
 
-    self.sidebar.frame = CGRectMake(0, headerH, sideW, bodyH);
-    UIView *divider = [self.panel viewWithTag:107];
-    divider.frame = CGRectMake(sideW, headerH, 1, bodyH);
-
-    CGFloat navY = 15;
-    CGFloat navH = MIN(44, bodyH * 0.12);
-
+    CGFloat navH = 43;
     for (NSInteger i = 0; i < self.navButtons.count; i++) {
         UIButton *button = self.navButtons[i];
-        button.frame = CGRectMake(10, navY + i*(navH+8),
-                                  sideW-20, navH);
+        button.frame = CGRectMake(9, 16+i*51, sideW-18, navH);
         button.titleLabel.font =
             [UIFont systemFontOfSize:MIN(13, sideW*0.09)
                                weight:UIFontWeightSemibold];
     }
 
-    CGFloat pageX = sideW + 16;
-    CGFloat pageW = panelW - pageX - 14;
-    CGFloat pageY = headerH + 12;
-    CGFloat statusH = 24;
+    CGFloat contentX = sideW + 15;
+    CGFloat contentW = panelW-contentX-13;
+    CGFloat headerBottom = headerH + 12;
 
-    self.page.frame = CGRectMake(pageX, pageY, pageW,
-                                  bodyH - 36 - statusH);
-    self.status.frame = CGRectMake(pageX+2, panelH-statusH-4,
-                                    pageW-4, statusH);
+    self.pageTitle.frame = CGRectMake(contentX, headerBottom,
+                                      contentW, 30);
 
-    [self layoutPage];
+    self.page.frame = CGRectMake(contentX, headerBottom+37,
+                                 contentW,
+                                 panelH-headerBottom-74);
+
+    self.status.frame = CGRectMake(contentX, panelH-27,
+                                   contentW, 18);
+
+    [self layoutCurrentPage];
 }
 
-#pragma mark - Page Navigation
+- (void)layoutCurrentPage {
+    CGFloat W = self.page.bounds.size.width;
+    CGFloat H = self.page.bounds.size.height;
+    if (W <= 0 || H <= 0) return;
 
-- (void)navigate:(UIButton *)sender {
-    NSArray *names = @[@"Main", @"Settings",
-                       @"Config Profiles", @"Credits"];
+    if ([self.currentPage isEqualToString:@"Main"]) {
+        NSArray *cards = @[
+            @710, @711, @712, @713
+        ];
 
-    if (sender.tag >= names.count) return;
+        CGFloat y = 0;
+        CGFloat gap = 10;
+        CGFloat h1 = MIN(70, H*0.18);
+        CGFloat h2 = MIN(70, H*0.18);
+        CGFloat h3 = MIN(100, H*0.25);
+        CGFloat h4 = MIN(70, H*0.18);
+        NSArray *heights = @[@(h1), @(h2), @(h3), @(h4)];
 
-    [self showPage:names[sender.tag]];
+        for (NSInteger i = 0; i < cards.count; i++) {
+            UIView *card = [self.page viewWithTag:[cards[i] integerValue]];
+            if (!card) continue;
 
-    for (NSInteger i = 0; i < self.navButtons.count; i++) {
-        UIButton *button = self.navButtons[i];
-        button.backgroundColor =
-            i == sender.tag ? self.blue : self.cardColor;
-        button.tintColor = i == sender.tag
-            ? UIColor.whiteColor : self.muted;
+            CGFloat ch = [heights[i] doubleValue];
+            card.frame = CGRectMake(0, y, W, ch);
+            [self layoutMainCard:card width:W height:ch];
+            y += ch + gap;
+        }
     }
+
+    if ([self.currentPage isEqualToString:@"Settings"]) {
+        UIView *a = [self.page viewWithTag:720];
+        UIView *b = [self.page viewWithTag:721];
+        a.frame = CGRectMake(0, 0, W, 145);
+        b.frame = CGRectMake(0, 155, W, 100);
+    }
+
+    if ([self.currentPage isEqualToString:@"Credits"]) {
+        UIView *a = [self.page viewWithTag:740];
+        UIView *b = [self.page viewWithTag:741];
+        UIView *c = [self.page viewWithTag:742];
+
+        a.frame = CGRectMake(0, 5, W, 70);
+        b.frame = CGRectMake(0, 85, W, 70);
+        c.frame = CGRectMake(0, 165, W, 65);
+
+        UIButton *copy = [c viewWithTag:743];
+        copy.frame = CGRectMake(W-95, 14, 82, 36);
+        [self layoutBasicCard:a width:W height:70];
+        [self layoutBasicCard:b width:W height:70];
+        [self layoutBasicCard:c width:W height:65];
+    }
+
+    if ([self.currentPage isEqualToString:@"Config Profiles"]) {
+        UIView *desc = [self.page viewWithTag:730];
+        UIView *field = [self.page viewWithTag:731];
+        UIView *create = [self.page viewWithTag:732];
+
+        desc.frame = CGRectMake(0, 0, W, 26);
+        field.frame = CGRectMake(0, 31, W, 40);
+        create.frame = CGRectMake(0, 78, W, 39);
+
+        self.configScroll.frame =
+            CGRectMake(0, 125, W, MAX(0, H-125));
+
+        CGFloat y = 0;
+        for (UIView *row in self.configScroll.subviews) {
+            if (row.tag < 800) continue;
+
+            row.frame = CGRectMake(0, y, W, 68);
+
+            UILabel *name = [row viewWithTag:801];
+            name.frame = CGRectMake(10, 5, W-20, 23);
+
+            UIButton *load = [row viewWithTag:802];
+            UIButton *del = [row viewWithTag:803];
+
+            CGFloat bw = MIN(76, W*0.24);
+            load.frame = CGRectMake(W-2*bw-17, 35, bw, 27);
+            del.frame = CGRectMake(W-bw-8, 35, bw, 27);
+
+            y += 76;
+        }
+        self.configScroll.contentSize = CGSizeMake(W, y);
+    }
+}
+
+- (void)layoutBasicCard:(UIView *)card
+                  width:(CGFloat)W
+                 height:(CGFloat)H {
+    UILabel *title = [card viewWithTag:101];
+    UILabel *subtitle = [card viewWithTag:102];
+
+    title.frame = CGRectMake(13, 9, W-26, 22);
+    subtitle.frame = CGRectMake(13, 34, W-26, 19);
+}
+
+- (void)layoutMainCard:(UIView *)card
+                 width:(CGFloat)W
+                height:(CGFloat)H {
+    [self layoutBasicCard:card width:W height:H];
+
+    if (card.tag == 710) {
+        self.farmSwitch.frame = CGRectMake(W-63, (H-31)/2, 51, 31);
+    } else if (card.tag == 711) {
+        self.boostSwitch.frame = CGRectMake(W-63, (H-31)/2, 51, 31);
+    } else if (card.tag == 712) {
+        self.speedValue.frame = CGRectMake(W-60, 10, 45, 23);
+        self.speedSlider.frame = CGRectMake(12, H-35, W-24, 25);
+    } else if (card.tag == 713) {
+        UIButton *reset = [card viewWithTag:714];
+        reset.frame = CGRectMake(W-91, (H-34)/2, 78, 34);
+    }
+}
+
+#pragma mark - Pages
+
+- (void)clearPage {
+    for (UIView *v in self.page.subviews) {
+        [v removeFromSuperview];
+    }
+    self.farmSwitch = nil;
+    self.boostSwitch = nil;
+    self.speedSlider = nil;
+    self.speedValue = nil;
+    self.configName = nil;
+    self.configScroll = nil;
 }
 
 - (void)showPage:(NSString *)name {
     self.currentPage = name;
-
-    for (UIView *view in self.page.subviews) {
-        [view removeFromSuperview];
-    }
-
-    UILabel *heading = [self label:name size:22
-                              color:UIColor.whiteColor];
-    heading.font = [UIFont boldSystemFontOfSize:22];
-    heading.frame = CGRectMake(0, 0,
-                               self.page.bounds.size.width, 34);
-    heading.tag = 601;
-    [self.page addSubview:heading];
+    self.pageTitle.text = name;
+    [self clearPage];
 
     if ([name isEqualToString:@"Main"]) {
         [self buildMainPage];
     } else if ([name isEqualToString:@"Settings"]) {
         [self buildSettingsPage];
     } else if ([name isEqualToString:@"Config Profiles"]) {
-        [self buildConfigsPage];
+        [self buildConfigPage];
     } else if ([name isEqualToString:@"Credits"]) {
         [self buildCreditsPage];
     }
 
+    NSArray *names = @[@"Main", @"Settings",
+                       @"Config Profiles", @"Credits"];
+
+    for (NSInteger i = 0; i < self.navButtons.count; i++) {
+        UIButton *button = self.navButtons[i];
+        BOOL active = [names[i] isEqualToString:name];
+        button.backgroundColor = active ? self.blue : self.cardColor;
+    }
+
     [self setNeedsLayout];
     [self layoutIfNeeded];
-    [self layoutPage];
 }
 
-- (void)layoutPage {
-    CGFloat W = self.page.bounds.size.width;
-    CGFloat H = self.page.bounds.size.height;
-    if (W <= 0 || H <= 0) return;
-
-    UILabel *heading = [self.page viewWithTag:601];
-    heading.frame = CGRectMake(0, 0, W, 32);
-
-    for (UIView *view in self.page.subviews) {
-        if (view.tag >= 700 && view.tag < 800) {
-            CGFloat y = (view.tag - 700) * 85 + 43;
-            view.frame = CGRectMake(0, y, W, 75);
-            [self layoutCard:view width:W];
-        }
-    }
-
-    [self layoutDynamicPageWithWidth:W height:H];
-}
-
-- (void)layoutCard:(UIView *)card width:(CGFloat)W {
-    UILabel *heading = [card viewWithTag:501];
-    UILabel *detail = [card viewWithTag:502];
-
-    heading.frame = CGRectMake(14, 12, W-120, 22);
-    detail.frame = CGRectMake(14, 36, W-120, 19);
-
-    if (card.tag == 710 && self.farmSwitch) {
-        self.farmSwitch.frame = CGRectMake(W-64, 22, 50, 31);
-    }
-    if (card.tag == 711 && self.speedSwitch) {
-        self.speedSwitch.frame = CGRectMake(W-64, 22, 50, 31);
-    }
-    if (card.tag == 712) {
-        self.speedValue.frame = CGRectMake(W-62, 12, 48, 22);
-        self.speedSlider.frame = CGRectMake(14, 54, W-28, 22);
-    }
-    if (card.tag == 713) {
-        UIButton *reset = [card viewWithTag:714];
-        reset.frame = CGRectMake(W-115, 17, 100, 40);
-    }
+- (void)navigate:(UIButton *)sender {
+    NSArray *names = @[@"Main", @"Settings",
+                       @"Config Profiles", @"Credits"];
+    if (sender.tag < 0 || sender.tag >= names.count) return;
+    [self showPage:names[sender.tag]];
 }
 
 #pragma mark - Main Page
 
 - (void)buildMainPage {
-    CGFloat W = self.page.bounds.size.width;
-
-    UIView *farm = [self card:CGRectZero];
+    UIView *farm = [self makeCard:@"Farm Toggle"
+                          subtitle:@"Example enable / disable option"];
     farm.tag = 710;
-    [self styleCardLabel:farm title:@"Farm Toggle"
-                 subtitle:@"Example enable / disable option"];
+
     self.farmSwitch = [[UISwitch alloc] init];
     [self.farmSwitch addTarget:self action:@selector(farmChanged:)
               forControlEvents:UIControlEventValueChanged];
     [farm addSubview:self.farmSwitch];
     [self.page addSubview:farm];
 
-    UIView *speed = [self card:CGRectZero];
-    speed.tag = 711;
-    [self styleCardLabel:speed title:@"Enable Speed Boost"
-                 subtitle:@"Demo toggle only"];
-    self.speedSwitch = [[UISwitch alloc] init];
-    [self.speedSwitch addTarget:self action:@selector(speedChanged:)
-               forControlEvents:UIControlEventValueChanged];
-    [speed addSubview:self.speedSwitch];
-    [self.page addSubview:speed];
+    UIView *boost = [self makeCard:@"Enable Speed Boost"
+                           subtitle:@"Example toggle only"];
+    boost.tag = 711;
 
-    UIView *sliderCard = [self card:CGRectZero];
-    sliderCard.tag = 712;
-    [self styleCardLabel:sliderCard title:@"WalkSpeed Value"
-                 subtitle:@"Adjust example value"];
-    self.speedValue = [self label:@"50" size:14 color:UIColor.whiteColor];
+    self.boostSwitch = [[UISwitch alloc] init];
+    [self.boostSwitch addTarget:self action:@selector(boostChanged:)
+               forControlEvents:UIControlEventValueChanged];
+    [boost addSubview:self.boostSwitch];
+    [self.page addSubview:boost];
+
+    UIView *speed = [self makeCard:@"WalkSpeed Value"
+                           subtitle:@"Adjust example value"];
+    speed.tag = 712;
+
+    self.speedValue = [self makeLabel:@"50"
+                                 size:14
+                                color:UIColor.whiteColor];
     self.speedValue.textAlignment = NSTextAlignmentRight;
-    [sliderCard addSubview:self.speedValue];
+    [speed addSubview:self.speedValue];
 
     self.speedSlider = [[UISlider alloc] init];
     self.speedSlider.minimumValue = 16;
     self.speedSlider.maximumValue = 200;
     self.speedSlider.minimumTrackTintColor = self.blue;
-    [self.speedSlider addTarget:self action:@selector(speedValueChanged:)
+    [self.speedSlider addTarget:self action:@selector(speedChanged:)
                forControlEvents:UIControlEventValueChanged];
-    [sliderCard addSubview:self.speedSlider];
-    [self.page addSubview:sliderCard];
+    [speed addSubview:self.speedSlider];
+    [self.page addSubview:speed];
 
-    UIView *resetCard = [self card:CGRectZero];
+    UIView *resetCard = [self makeCard:@"Reset Demo Settings"
+                               subtitle:@"Restore example defaults"];
     resetCard.tag = 713;
-    [self styleCardLabel:resetCard title:@"Reset Demo Settings"
-                 subtitle:@"Restore saved example defaults"];
 
-    UIButton *reset = [self button:@"Reset"];
+    UIButton *reset = [self makeButton:@"Reset"];
     reset.tag = 714;
     reset.backgroundColor = self.blue;
     [reset addTarget:self action:@selector(resetSettings)
@@ -495,252 +575,177 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
 }
 
 - (void)applySettings {
-    if (!self.farmSwitch || !self.speedSwitch || !self.speedSlider) return;
+    if (!self.farmSwitch || !self.boostSwitch ||
+        !self.speedSlider || !self.speedValue) {
+        return;
+    }
 
     self.farmSwitch.on = [self.settings[@"farm"] boolValue];
-    self.speedSwitch.on = [self.settings[@"speedBoost"] boolValue];
+    self.boostSwitch.on = [self.settings[@"boost"] boolValue];
     self.speedSlider.value = [self.settings[@"speed"] floatValue];
+
     self.speedValue.text =
         [NSString stringWithFormat:@"%ld",
          (long)roundf(self.speedSlider.value)];
 }
 
 - (void)saveSettings {
-    self.settings[@"farm"] = @(self.farmSwitch.isOn);
-    self.settings[@"speedBoost"] = @(self.speedSwitch.isOn);
-    self.settings[@"speed"] = @(self.speedSlider.value);
+    if (self.farmSwitch) self.settings[@"farm"] = @(self.farmSwitch.isOn);
+    if (self.boostSwitch) self.settings[@"boost"] = @(self.boostSwitch.isOn);
+    if (self.speedSlider) self.settings[@"speed"] = @(self.speedSlider.value);
 
     [[NSUserDefaults standardUserDefaults]
         setObject:self.settings forKey:K1sUISettingsKey];
 }
 
 - (void)farmChanged:(UISwitch *)sender {
-    self.status.text = sender.isOn
-        ? @"Demo farm toggle enabled"
-        : @"Demo farm toggle disabled";
+    self.settings[@"farm"] = @(sender.isOn);
     [self saveSettings];
+    self.status.text = @"Farm demo option updated";
 }
 
-- (void)speedChanged:(UISwitch *)sender {
-    self.status.text = sender.isOn
-        ? @"Demo speed boost enabled"
-        : @"Demo speed boost disabled";
+- (void)boostChanged:(UISwitch *)sender {
+    self.settings[@"boost"] = @(sender.isOn);
     [self saveSettings];
+    self.status.text = @"Speed boost demo option updated";
 }
 
-- (void)speedValueChanged:(UISlider *)sender {
+- (void)speedChanged:(UISlider *)sender {
+    self.settings[@"speed"] = @(sender.value);
     self.speedValue.text =
         [NSString stringWithFormat:@"%ld", (long)roundf(sender.value)];
-    self.status.text = @"WalkSpeed demo value changed";
     [self saveSettings];
+    self.status.text = @"Demo value saved";
 }
 
 - (void)resetSettings {
     self.settings = [@{
         @"farm": @YES,
-        @"speedBoost": @NO,
+        @"boost": @NO,
         @"speed": @50
     } mutableCopy];
 
     [self applySettings];
     [self saveSettings];
-    self.status.text = @"Demo settings restored";
+    self.status.text = @"Demo settings reset";
 }
 
 #pragma mark - Settings Page
 
 - (void)buildSettingsPage {
-    CGFloat W = self.page.bounds.size.width;
+    UIView *a = [self makeCard:@"Appearance"
+                       subtitle:@"Dark translucent interface"];
+    a.tag = 720;
 
-    UIView *card = [self card:CGRectZero];
-    card.tag = 720;
-    [self styleCardLabel:card title:@"Appearance"
-                 subtitle:@"K1sUI interface preferences"];
+    UILabel *detail = [self makeLabel:
+        @"Rounded panels\nBlue highlights\nSF Symbols icons"
+                                  size:12 color:self.mutedColor];
+    detail.numberOfLines = 3;
+    detail.frame = CGRectMake(13, 55, 230, 65);
+    [a addSubview:detail];
+    [self.page addSubview:a];
 
-    UILabel *info = [self label:
-        @"Dark navy theme\nRounded translucent panels\nBlue accent controls"
-                               size:13 color:self.muted];
-    info.numberOfLines = 3;
-    info.frame = CGRectMake(14, 60, W-28, 76);
-    [card addSubview:info];
-    [self.page addSubview:card];
-
-    UIView *about = [self card:CGRectZero];
-    about.tag = 721;
-    [self styleCardLabel:about title:@"Configuration Storage"
-                 subtitle:@"Settings are stored locally on this device"];
-
-    UILabel *note = [self label:
-        @"Only K1sUI demo settings are saved."
-                            size:12 color:self.muted];
-    note.frame = CGRectMake(14, 59, W-28, 25);
-    [about addSubview:note];
-    [self.page addSubview:about];
+    UIView *b = [self makeCard:@"Local Storage"
+                       subtitle:@"K1sUI preferences are saved on device"];
+    b.tag = 721;
+    [self.page addSubview:b];
 }
 
 #pragma mark - Config Profiles
 
-- (void)buildConfigsPage {
-    CGFloat W = self.page.bounds.size.width;
-
-    UILabel *description = [self label:
-        @"Save and restore your K1sUI demo preferences."
-                                          size:12 color:self.muted];
+- (void)buildConfigPage {
+    UILabel *description = [self makeLabel:
+        @"Save and load K1sUI demo settings."
+                                       size:12 color:self.mutedColor];
     description.tag = 730;
-    description.frame = CGRectMake(0, 39, W, 30);
     [self.page addSubview:description];
 
     self.configName = [[UITextField alloc] init];
     self.configName.tag = 731;
-    self.configName.frame = CGRectMake(0, 74, W, 43);
-    self.configName.placeholder = @"  Config title...";
+    self.configName.placeholder = @"Config title";
     self.configName.textColor = UIColor.whiteColor;
     self.configName.tintColor = self.blue;
     self.configName.backgroundColor = self.cardColor;
     self.configName.layer.cornerRadius = 10;
     self.configName.layer.borderWidth = 1;
-    self.configName.layer.borderColor = self.lineColor.CGColor;
+    self.configName.layer.borderColor =
+        [self.blue colorWithAlphaComponent:0.3].CGColor;
     self.configName.leftView =
-        [[UIView alloc] initWithFrame:CGRectMake(0, 0, 8, 1)];
+        [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 1)];
     self.configName.leftViewMode = UITextFieldViewModeAlways;
-    self.configName.returnKeyType = UIReturnKeyDone;
     self.configName.delegate = self;
+    self.configName.returnKeyType = UIReturnKeyDone;
     [self.page addSubview:self.configName];
 
-    UIButton *create = [self button:@"＋  Create"];
+    UIButton *create = [self makeButton:@"＋  Create"];
     create.tag = 732;
     create.backgroundColor = self.blue;
-    create.frame = CGRectMake(0, 124, W, 40);
     [create addTarget:self action:@selector(createConfig)
      forControlEvents:UIControlEventTouchUpInside];
     [self.page addSubview:create];
 
-    UIScrollView *scroll = [[UIScrollView alloc] init];
-    scroll.tag = 733;
-    scroll.frame = CGRectMake(0, 173, W, MAX(0, self.page.bounds.size.height-178));
-    scroll.alwaysBounceVertical = YES;
-    [self.page addSubview:scroll];
+    self.configScroll = [[UIScrollView alloc] init];
+    self.configScroll.alwaysBounceVertical = YES;
+    [self.page addSubview:self.configScroll];
 
-    self.configList = [[UIStackView alloc] init];
-    self.configList.axis = UILayoutConstraintAxisVertical;
-    self.configList.spacing = 8;
-    self.configList.frame = CGRectMake(0, 0, W, 0);
-    [scroll addSubview:self.configList];
-
-    [self refreshConfigList];
+    [self refreshConfigs];
 }
 
-- (void)layoutDynamicPageWithWidth:(CGFloat)W height:(CGFloat)H {
-    if ([self.currentPage isEqualToString:@"Config Profiles"]) {
-        UIView *description = [self.page viewWithTag:730];
-        UIView *name = [self.page viewWithTag:731];
-        UIView *create = [self.page viewWithTag:732];
-        UIScrollView *scroll = [self.page viewWithTag:733];
-
-        description.frame = CGRectMake(0, 39, W, 30);
-        name.frame = CGRectMake(0, 74, W, 43);
-        create.frame = CGRectMake(0, 124, W, 40);
-        scroll.frame = CGRectMake(0, 173, W, MAX(0, H-178));
-
-        CGFloat y = 0;
-        for (UIView *row in self.configList.arrangedSubviews) {
-            row.frame = CGRectMake(0, y, W, 66);
-            [self layoutConfigRow:row width:W];
-            y += 74;
-        }
-        self.configList.frame = CGRectMake(0, 0, W, y);
-        scroll.contentSize = CGSizeMake(W, y);
+- (void)refreshConfigs {
+    for (UIView *v in self.configScroll.subviews) {
+        [v removeFromSuperview];
     }
 
-    if ([self.currentPage isEqualToString:@"Settings"]) {
-        UIView *a = [self.page viewWithTag:720];
-        UIView *b = [self.page viewWithTag:721];
-        a.frame = CGRectMake(0, 43, W, 155);
-        b.frame = CGRectMake(0, 211, W, 105);
-    }
-
-    if ([self.currentPage isEqualToString:@"Credits"]) {
-        UIView *dev = [self.page viewWithTag:740];
-        UIView *user = [self.page viewWithTag:741];
-        UIView *discord = [self.page viewWithTag:742];
-
-        dev.frame = CGRectMake(0, 48, W, 76);
-        user.frame = CGRectMake(0, 134, W, 76);
-        discord.frame = CGRectMake(0, 220, W, 58);
-        [self layoutCard:dev width:W];
-        [self layoutCard:user width:W];
-        [self layoutCard:discord width:W];
-
-        UIButton *copyButton = [discord viewWithTag:743];
-        copyButton.frame = CGRectMake(W-112, 11, 99, 36);
-    }
-}
-
-- (void)refreshConfigList {
-    for (UIView *view in self.configList.arrangedSubviews) {
-        [self.configList removeArrangedSubview:view];
-        [view removeFromSuperview];
-    }
+    CGFloat W = self.page.bounds.size.width;
 
     for (NSInteger i = 0; i < self.configs.count; i++) {
         NSDictionary *config = self.configs[i];
 
         UIView *row = [[UIView alloc] init];
-        row.backgroundColor = self.cardColor;
-        row.layer.cornerRadius = 12;
-        row.layer.borderWidth = 1;
-        row.layer.borderColor = self.lineColor.CGColor;
         row.tag = 800 + i;
+        row.backgroundColor = self.cardColor;
+        row.layer.cornerRadius = 11;
+        row.layer.borderWidth = 1;
+        row.layer.borderColor =
+            [self.blue colorWithAlphaComponent:0.25].CGColor;
 
-        UILabel *name = [self label:config[@"name"] ?: @"Untitled"
-                               size:13 color:UIColor.whiteColor];
+        UILabel *name = [self makeLabel:
+            [config[@"name"] isKindOfClass:NSString.class]
+                ? config[@"name"] : @"Untitled"
+                                  size:12 color:UIColor.whiteColor];
         name.tag = 801;
         [row addSubview:name];
 
-        UIButton *load = [self button:@"Load"];
-        load.tag = i;
+        UIButton *load = [self makeButton:@"Load"];
+        load.tag = (NSInteger)i;
         load.backgroundColor = self.blue;
         [load addTarget:self action:@selector(loadConfig:)
        forControlEvents:UIControlEventTouchUpInside];
+        load.accessibilityIdentifier = @"load";
+        load.tag = 802 + (NSInteger)i * 2;
         [row addSubview:load];
 
-        UIButton *delete = [self button:@"Delete"];
-        delete.tag = i;
-        delete.backgroundColor =
-            [UIColor colorWithRed:0.55 green:0.15 blue:0.22 alpha:1];
-        [delete addTarget:self action:@selector(deleteConfig:)
-         forControlEvents:UIControlEventTouchUpInside];
-        [row addSubview:delete];
+        UIButton *del = [self makeButton:@"Delete"];
+        del.backgroundColor =
+            [UIColor colorWithRed:0.55 green:0.16 blue:0.23 alpha:1];
+        [del addTarget:self action:@selector(deleteConfig:)
+      forControlEvents:UIControlEventTouchUpInside];
+        del.accessibilityIdentifier = @"delete";
+        del.tag = 803 + (NSInteger)i * 2;
+        [row addSubview:del];
 
-        [self.configList addArrangedSubview:row];
-        [row.heightAnchor constraintEqualToConstant:66].active = YES;
+        [self.configScroll addSubview:row];
+        row.frame = CGRectMake(0, i*76, W, 68);
     }
 
+    self.configScroll.contentSize =
+        CGSizeMake(W, self.configs.count * 76);
     [self setNeedsLayout];
-}
-
-- (void)layoutConfigRow:(UIView *)row width:(CGFloat)W {
-    UILabel *name = [row viewWithTag:801];
-    name.frame = CGRectMake(12, 8, W-24, 20);
-
-    UIButton *load = nil;
-    UIButton *del = nil;
-
-    for (UIView *v in row.subviews) {
-        if (![v isKindOfClass:UIButton.class]) continue;
-        UIButton *b = (UIButton *)v;
-        if ([b.currentTitle isEqualToString:@"Load"]) load = b;
-        if ([b.currentTitle isEqualToString:@"Delete"]) del = b;
-    }
-
-    CGFloat buttonW = MIN(70, W*0.22);
-    if (load) load.frame = CGRectMake(W-2*buttonW-20, 34, buttonW, 26);
-    if (del) del.frame = CGRectMake(W-buttonW-10, 34, buttonW, 26);
 }
 
 - (void)persistConfigs {
     [[NSUserDefaults standardUserDefaults]
-        setObject:self.configs forKey:K1sUIConfigKey];
+        setObject:self.configs forKey:K1sUIConfigsKey];
 }
 
 - (void)createConfig {
@@ -751,28 +756,37 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
             [NSCharacterSet whitespaceAndNewlineCharacterSet]];
 
     if (name.length == 0) {
-        self.status.text = @"Enter a config title first";
+        self.status.text = @"Enter a config title";
         return;
     }
 
-    NSDictionary *snapshot = @{
+    [self saveSettings];
+
+    NSDictionary *config = @{
         @"name": name,
         @"settings": [self.settings copy],
         @"date": @([[NSDate date] timeIntervalSince1970])
     };
 
-    [self.configs addObject:snapshot];
+    [self.configs addObject:config];
     [self persistConfigs];
-    self.configName.text = @"";
-    [self refreshConfigList];
 
-    self.status.text = [NSString stringWithFormat:@"Saved config: %@", name];
+    self.configName.text = @"";
+    [self refreshConfigs];
+    self.status.text = @"Configuration saved";
+}
+
+- (NSInteger)configIndexForButton:(UIButton *)button {
+    NSString *kind = button.accessibilityIdentifier;
+    NSInteger base = [kind isEqualToString:@"delete"] ? 803 : 802;
+    return (button.tag - base) / 2;
 }
 
 - (void)loadConfig:(UIButton *)sender {
-    if (sender.tag < 0 || sender.tag >= self.configs.count) return;
+    NSInteger index = [self configIndexForButton:sender];
+    if (index < 0 || index >= (NSInteger)self.configs.count) return;
 
-    NSDictionary *config = self.configs[sender.tag];
+    NSDictionary *config = self.configs[index];
     NSDictionary *snapshot = config[@"settings"];
 
     if (![snapshot isKindOfClass:NSDictionary.class]) {
@@ -784,46 +798,50 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
     [[NSUserDefaults standardUserDefaults]
         setObject:self.settings forKey:K1sUISettingsKey];
 
-    [self applySettings];
+    if (![self.currentPage isEqualToString:@"Main"]) {
+        [self showPage:@"Main"];
+    } else {
+        [self applySettings];
+    }
+
     self.status.text =
-        [NSString stringWithFormat:@"Loaded: %@", config[@"name"]];
+        [NSString stringWithFormat:@"Loaded %@", config[@"name"]];
 }
 
 - (void)deleteConfig:(UIButton *)sender {
-    if (sender.tag < 0 || sender.tag >= self.configs.count) return;
+    NSInteger index = [self configIndexForButton:sender];
+    if (index < 0 || index >= (NSInteger)self.configs.count) return;
 
-    NSString *deletedName = self.configs[sender.tag][@"name"];
-    [self.configs removeObjectAtIndex:sender.tag];
+    [self.configs removeObjectAtIndex:index];
     [self persistConfigs];
-    [self refreshConfigList];
+    [self refreshConfigs];
+    self.status.text = @"Configuration deleted";
+}
 
-    self.status.text =
-        [NSString stringWithFormat:@"Deleted: %@", deletedName];
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [textField resignFirstResponder];
+    [self createConfig];
+    return YES;
 }
 
 #pragma mark - Credits
 
 - (void)buildCreditsPage {
-    CGFloat W = self.page.bounds.size.width;
+    UIView *dev = [self makeCard:@"Dev"
+                         subtitle:@"K1sUI developer"];
+    dev.tag = 740;
+    [self.page addSubview:dev];
 
-    UIView *developer = [self card:CGRectZero];
-    developer.tag = 740;
-    [self styleCardLabel:developer title:@"Dev"
-                 subtitle:@"K1sUI developer"];
-    [self.page addSubview:developer];
-
-    UIView *user = [self card:CGRectZero];
+    UIView *user = [self makeCard:@"Ales041718"
+                          subtitle:@"Developer profile"];
     user.tag = 741;
-    [self styleCardLabel:user title:@"Ales041718"
-                 subtitle:@"Developer profile"];
     [self.page addSubview:user];
 
-    UIView *discord = [self card:CGRectZero];
+    UIView *discord = [self makeCard:@"Discord"
+                             subtitle:@"Tap Copy to copy invite link"];
     discord.tag = 742;
-    [self styleCardLabel:discord title:@"Discord"
-                 subtitle:@"Tap to copy invite link"];
 
-    UIButton *copy = [self button:@"Copy"];
+    UIButton *copy = [self makeButton:@"Copy"];
     copy.tag = 743;
     copy.backgroundColor = self.blue;
     [copy addTarget:self action:@selector(copyDiscord)
@@ -834,17 +852,16 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
 }
 
 - (void)copyDiscord {
-    UIPasteboard.generalPasteboard.string = K1sUIDiscord;
-    self.status.text = @"Discord invite copied to clipboard";
+    UIPasteboard.generalPasteboard.string = K1sUIDiscordURL;
+    self.status.text = @"Discord invite copied";
 }
 
-#pragma mark - Minimize / Touch-Through
+#pragma mark - Minimize
 
 - (void)minimizeUI {
     self.minimized = YES;
     self.panel.hidden = YES;
     self.miniButton.hidden = NO;
-    self.status.text = @"K1sUI minimized";
 }
 
 - (void)showUI {
@@ -853,19 +870,18 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
     self.panel.hidden = NO;
 }
 
-// In minimized mode, only the floating rectangle captures touches.
-// Everything else passes through to the underlying app.
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    if (self.hidden || self.alpha < 0.01 || !self.userInteractionEnabled) {
+    if (self.hidden || self.alpha < 0.01 ||
+        !self.userInteractionEnabled) {
         return nil;
     }
 
     if (self.minimized) {
         if (self.miniButton.hidden) return nil;
 
-        CGPoint local = [self convertPoint:point toView:self.miniButton];
-        if (CGRectContainsPoint(self.miniButton.bounds, local)) {
-            return [self.miniButton hitTest:local withEvent:event];
+        CGPoint p = [self.miniButton convertPoint:point fromView:self];
+        if (CGRectContainsPoint(self.miniButton.bounds, p)) {
+            return [self.miniButton hitTest:p withEvent:event];
         }
         return nil;
     }
@@ -873,21 +889,9 @@ static NSString * const K1sUIDiscord = @"https://discord.gg/DKdAG9VTjh";
     return [super hitTest:point withEvent:event];
 }
 
-#pragma mark - Keyboard
-
-- (BOOL)textFieldShouldReturn:(UITextField *)textField {
-    [textField resignFirstResponder];
-    [self createConfig];
-    return YES;
-}
-
 @end
 
-#pragma mark - Automatic Initialization
-
-// [ K1sUI ]
-// Constructor-based loading for compatible injected/embedded environments.
-// UIKit UI creation is deferred to the main thread.
+#pragma mark - Automatic Loader
 
 static void K1sUIInstall(NSUInteger attempt) {
     if (![NSThread isMainThread]) {
@@ -902,8 +906,10 @@ static void K1sUIInstall(NSUInteger attempt) {
 
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in app.connectedScenes) {
-            if (scene.activationState != UISceneActivationStateForegroundActive)
+            if (scene.activationState !=
+                UISceneActivationStateForegroundActive) {
                 continue;
+            }
 
             if (![scene isKindOfClass:UIWindowScene.class]) continue;
 
@@ -930,7 +936,8 @@ static void K1sUIInstall(NSUInteger attempt) {
     if (!target) {
         if (attempt < 40) {
             dispatch_after(
-                dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5*NSEC_PER_SEC)),
+                dispatch_time(DISPATCH_TIME_NOW,
+                              (int64_t)(0.5 * NSEC_PER_SEC)),
                 dispatch_get_main_queue(), ^{
                     K1sUIInstall(attempt + 1);
                 });
