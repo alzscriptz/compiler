@@ -1,517 +1,436 @@
 
-#import "ViewController.h"
+
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
+#import <QuartzCore/QuartzCore.h>
+#import <math.h>
 
-@interface ViewController ()
+// Universal Hub - standalone UIKit overlay
+// No ViewController, storyboard, or AppDelegate required.
+// Compile as an ARC-enabled Objective-C dynamic library.
 
-@property (nonatomic, strong) UIView *panel;
-@property (nonatomic, strong) UIView *sidebar;
-@property (nonatomic, strong) UIView *content;
-@property (nonatomic, strong) UIButton *reopenButton;
-@property (nonatomic, strong) UILabel *statusLabel;
-@property (nonatomic, strong) UILabel *scaleLabel;
-@property (nonatomic, strong) UISlider *scaleSlider;
-@property (nonatomic, strong) UISwitch *notificationSwitch;
-@property (nonatomic, strong) UISwitch *compactSwitch;
-@property (nonatomic, strong) UIStackView *navigation;
-@property (nonatomic, strong) UIStackView *mainStack;
-
+@interface UHOverlay : UIView
+@property(nonatomic, strong) UIView *panel;
+@property(nonatomic, strong) UIView *header;
+@property(nonatomic, strong) UIView *sidebar;
+@property(nonatomic, strong) UIView *separator;
+@property(nonatomic, strong) UILabel *pageTitle;
+@property(nonatomic, strong) UILabel *status;
+@property(nonatomic, strong) UILabel *scaleText;
+@property(nonatomic, strong) UISwitch *notificationSwitch;
+@property(nonatomic, strong) UISwitch *compactSwitch;
+@property(nonatomic, strong) UISlider *scaleSlider;
+@property(nonatomic, strong) UIButton *reopenButton;
+@property(nonatomic, strong) NSMutableArray<UIButton *> *navButtons;
+@property(nonatomic, strong) NSMutableArray<UIView *> *cards;
 @end
 
-@implementation ViewController
+@implementation UHOverlay
 
-#pragma mark - Colors
-
-- (UIColor *)backgroundColor {
-    return [UIColor colorWithRed:10/255.0
-                           green:20/255.0
-                            blue:40/255.0 alpha:1];
+- (UIColor *)bg {
+    return [UIColor colorWithRed:10/255.0 green:19/255.0 blue:38/255.0 alpha:1];
 }
 
 - (UIColor *)cardColor {
-    return [UIColor colorWithRed:19/255.0
-                           green:34/255.0
-                            blue:62/255.0 alpha:1];
+    return [UIColor colorWithRed:20/255.0 green:35/255.0 blue:63/255.0 alpha:1];
 }
 
-- (UIColor *)accentColor {
-    return [UIColor colorWithRed:35/255.0
-                           green:103/255.0
-                            blue:255/255.0 alpha:1];
+- (UIColor *)blue {
+    return [UIColor colorWithRed:38/255.0 green:103/255.0 blue:255/255.0 alpha:1];
 }
 
-- (UIColor *)mutedColor {
-    return [UIColor colorWithRed:151/255.0
-                           green:180/255.0
-                            blue:222/255.0 alpha:1];
+- (UIColor *)muted {
+    return [UIColor colorWithRed:155/255.0 green:181/255.0 blue:220/255.0 alpha:1];
 }
 
 - (UILabel *)label:(NSString *)text size:(CGFloat)size {
-    UILabel *label = [[UILabel alloc] init];
-    label.text = text;
-    label.font = [UIFont systemFontOfSize:size
-                                  weight:UIFontWeightMedium];
-    label.textColor = UIColor.whiteColor;
-    label.numberOfLines = 0;
-    return label;
+    UILabel *l = [[UILabel alloc] initWithFrame:CGRectZero];
+    l.text = text;
+    l.font = [UIFont systemFontOfSize:size weight:UIFontWeightMedium];
+    l.textColor = UIColor.whiteColor;
+    l.backgroundColor = UIColor.clearColor;
+    l.adjustsFontSizeToFitWidth = YES;
+    l.minimumScaleFactor = 0.75;
+    return l;
 }
 
-#pragma mark - Setup
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-
-    self.view.backgroundColor = self.backgroundColor;
-    [self buildInterface];
+- (UIButton *)button:(NSString *)title {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    [b setTitle:title forState:UIControlStateNormal];
+    [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    b.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    b.layer.cornerRadius = 10;
+    b.clipsToBounds = YES;
+    return b;
 }
 
-- (void)buildInterface {
+- (void)build {
+    self.backgroundColor = [UIColor colorWithWhite:0 alpha:0.25];
+
     self.panel = [[UIView alloc] init];
-    self.panel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.panel.backgroundColor = self.backgroundColor;
-    self.panel.layer.cornerRadius = 20;
+    self.panel.backgroundColor = self.bg;
+    self.panel.layer.cornerRadius = 18;
     self.panel.layer.borderWidth = 1;
-    self.panel.layer.borderColor =
-        [self.accentColor colorWithAlphaComponent:0.8].CGColor;
+    self.panel.layer.borderColor = self.blue.CGColor;
     self.panel.clipsToBounds = YES;
+    [self addSubview:self.panel];
 
-    [self.view addSubview:self.panel];
+    self.header = [[UIView alloc] init];
+    self.header.backgroundColor =
+        [UIColor colorWithRed:13/255.0 green:26/255.0 blue:50/255.0 alpha:1];
+    [self.panel addSubview:self.header];
 
-    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    UILabel *appIcon = [self label:@"UH" size:20];
+    appIcon.font = [UIFont boldSystemFontOfSize:20];
+    appIcon.textAlignment = NSTextAlignmentCenter;
+    appIcon.backgroundColor = self.blue;
+    appIcon.layer.cornerRadius = 11;
+    appIcon.clipsToBounds = YES;
+    appIcon.tag = 101;
+    [self.header addSubview:appIcon];
 
-    [NSLayoutConstraint activateConstraints:@[
-        [self.panel.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor
-                                                 constant:12],
-        [self.panel.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor
-                                                  constant:-12],
-        [self.panel.topAnchor constraintEqualToAnchor:safe.topAnchor
-                                             constant:8],
-        [self.panel.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor
-                                                constant:-8]
-    ]];
+    UILabel *appTitle = [self label:@"Universal Hub" size:21];
+    appTitle.font = [UIFont boldSystemFontOfSize:21];
+    appTitle.tag = 102;
+    [self.header addSubview:appTitle];
 
-    [self buildHeader];
-    [self buildSidebar];
-    [self buildContent];
-    [self buildReopenButton];
-}
+    UILabel *subtitle = [self label:@"Native UIKit Demo" size:12];
+    subtitle.textColor = self.muted;
+    subtitle.tag = 103;
+    [self.header addSubview:subtitle];
 
-#pragma mark - Header
-
-- (void)buildHeader {
-    UIView *header = [[UIView alloc] init];
-    header.translatesAutoresizingMaskIntoConstraints = NO;
-    header.backgroundColor =
-        [UIColor colorWithRed:13/255.0 green:26/255.0
-                         blue:50/255.0 alpha:1];
-
-    [self.panel addSubview:header];
-
-    UILabel *icon = [self label:@"UH" size:20];
-    icon.textAlignment = NSTextAlignmentCenter;
-    icon.font = [UIFont boldSystemFontOfSize:20];
-    icon.backgroundColor = self.accentColor;
-    icon.layer.cornerRadius = 12;
-    icon.clipsToBounds = YES;
-    icon.translatesAutoresizingMaskIntoConstraints = NO;
-    [header addSubview:icon];
-
-    UILabel *title = [self label:@"Universal Hub" size:22];
-    title.font = [UIFont boldSystemFontOfSize:22];
-    [header addSubview:title];
-
-    UILabel *subtitle = [self label:@"Native UI Demo" size:12];
-    subtitle.textColor = self.mutedColor;
-    [header addSubview:subtitle];
-
-    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
-    [close setTitle:@"×" forState:UIControlStateNormal];
-    close.titleLabel.font = [UIFont systemFontOfSize:32 weight:UIFontWeightRegular];
-    [close setTitleColor:[UIColor colorWithRed:1 green:0.3
-                                         blue:0.43 alpha:1]
-                 forState:UIControlStateNormal];
-    [close addTarget:self
-              action:@selector(hideInterface)
+    UIButton *close = [self button:@"×"];
+    close.tag = 104;
+    close.titleLabel.font = [UIFont systemFontOfSize:31];
+    [close setTitleColor:[UIColor colorWithRed:1 green:0.3 blue:0.42 alpha:1]
+                forState:UIControlStateNormal];
+    [close addTarget:self action:@selector(hideHub)
     forControlEvents:UIControlEventTouchUpInside];
-    close.translatesAutoresizingMaskIntoConstraints = NO;
-    [header addSubview:close];
+    [self.header addSubview:close];
 
-    UIView *line = [[UIView alloc] init];
-    line.translatesAutoresizingMaskIntoConstraints = NO;
-    line.backgroundColor = [self.accentColor colorWithAlphaComponent:0.25];
-    [header addSubview:line];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [header.topAnchor constraintEqualToAnchor:self.panel.topAnchor],
-        [header.leadingAnchor constraintEqualToAnchor:self.panel.leadingAnchor],
-        [header.trailingAnchor constraintEqualToAnchor:self.panel.trailingAnchor],
-        [header.heightAnchor constraintEqualToConstant:76],
-
-        [icon.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:14],
-        [icon.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
-        [icon.widthAnchor constraintEqualToConstant:46],
-        [icon.heightAnchor constraintEqualToConstant:46],
-
-        [title.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:12],
-        [title.topAnchor constraintEqualToAnchor:header.topAnchor constant:16],
-
-        [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
-        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:2],
-
-        [close.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-12],
-        [close.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
-        [close.widthAnchor constraintEqualToConstant:44],
-        [close.heightAnchor constraintEqualToConstant:48],
-
-        [line.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
-        [line.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
-        [line.bottomAnchor constraintEqualToAnchor:header.bottomAnchor],
-        [line.heightAnchor constraintEqualToConstant:1]
-    ]];
-}
-
-#pragma mark - Sidebar
-
-- (void)buildSidebar {
     self.sidebar = [[UIView alloc] init];
-    self.sidebar.translatesAutoresizingMaskIntoConstraints = NO;
     self.sidebar.backgroundColor =
-        [UIColor colorWithRed:12/255.0 green:23/255.0
-                         blue:44/255.0 alpha:1];
-
+        [UIColor colorWithRed:12/255.0 green:23/255.0 blue:44/255.0 alpha:1];
     [self.panel addSubview:self.sidebar];
 
-    self.navigation = [[UIStackView alloc] init];
-    self.navigation.translatesAutoresizingMaskIntoConstraints = NO;
-    self.navigation.axis = UILayoutConstraintAxisVertical;
-    self.navigation.spacing = 10;
-    self.navigation.alignment = UIStackViewAlignmentFill;
+    self.separator = [[UIView alloc] init];
+    self.separator.backgroundColor =
+        [self.blue colorWithAlphaComponent:0.3];
+    [self.panel addSubview:self.separator];
 
-    [self.sidebar addSubview:self.navigation];
-
-    NSArray *titles = @[
+    self.navButtons = [NSMutableArray array];
+    NSArray *names = @[
         @"⌂   Main",
         @"⚙   Settings",
         @"▱   Config Profiles",
         @"★   Credits"
     ];
 
-    for (NSInteger i = 0; i < titles.count; i++) {
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        [button setTitle:titles[i] forState:UIControlStateNormal];
-        button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-        button.titleLabel.font = [UIFont systemFontOfSize:13
-                                                  weight:UIFontWeightSemibold];
-        button.titleLabel.adjustsFontSizeToFitWidth = YES;
-        button.titleLabel.minimumScaleFactor = 0.75;
-        button.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 5);
-        button.layer.cornerRadius = 11;
-        button.tag = i;
-        button.backgroundColor = i == 0 ? self.accentColor : self.cardColor;
-        [button setTitleColor:UIColor.whiteColor
-                     forState:UIControlStateNormal];
-        [button addTarget:self
-                   action:@selector(navigate:)
-         forControlEvents:UIControlEventTouchUpInside];
-
-        [self.navigation addArrangedSubview:button];
-        [button.heightAnchor constraintEqualToConstant:44].active = YES;
+    for (NSInteger i = 0; i < names.count; i++) {
+        UIButton *b = [self button:names[i]];
+        b.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+        b.contentEdgeInsets = UIEdgeInsetsMake(0, 10, 0, 3);
+        b.backgroundColor = i == 0 ? self.blue : self.cardColor;
+        b.tag = i;
+        [b addTarget:self action:@selector(navigate:)
+    forControlEvents:UIControlEventTouchUpInside];
+        [self.sidebar addSubview:b];
+        [self.navButtons addObject:b];
     }
 
-    UIView *divider = [[UIView alloc] init];
-    divider.translatesAutoresizingMaskIntoConstraints = NO;
-    divider.backgroundColor =
-        [self.accentColor colorWithAlphaComponent:0.25];
-    [self.panel addSubview:divider];
+    self.pageTitle = [self label:@"Main" size:22];
+    self.pageTitle.font = [UIFont boldSystemFontOfSize:22];
+    [self.panel addSubview:self.pageTitle];
 
-    [NSLayoutConstraint activateConstraints:@[
-        [self.sidebar.leadingAnchor constraintEqualToAnchor:self.panel.leadingAnchor],
-        [self.sidebar.topAnchor constraintEqualToAnchor:self.panel.topAnchor constant:76],
-        [self.sidebar.bottomAnchor constraintEqualToAnchor:self.panel.bottomAnchor],
-        [self.sidebar.widthAnchor constraintEqualToConstant:150],
+    self.cards = [NSMutableArray array];
 
-        [self.navigation.leadingAnchor constraintEqualToAnchor:self.sidebar.leadingAnchor constant:9],
-        [self.navigation.trailingAnchor constraintEqualToAnchor:self.sidebar.trailingAnchor constant:-9],
-        [self.navigation.topAnchor constraintEqualToAnchor:self.sidebar.topAnchor constant:16],
+    // Card 1: notification switch
+    UIView *card1 = [self makeCard:@"Notification Toggle"
+                          subtitle:@"Show or hide demo notifications"];
+    self.notificationSwitch = [[UISwitch alloc] init];
+    self.notificationSwitch.on = YES;
+    [self.notificationSwitch addTarget:self action:@selector(notificationChanged:)
+                      forControlEvents:UIControlEventValueChanged];
+    [card1 addSubview:self.notificationSwitch];
+    [self.cards addObject:card1];
 
-        [divider.leadingAnchor constraintEqualToAnchor:self.sidebar.trailingAnchor],
-        [divider.topAnchor constraintEqualToAnchor:self.sidebar.topAnchor],
-        [divider.bottomAnchor constraintEqualToAnchor:self.panel.bottomAnchor],
-        [divider.widthAnchor constraintEqualToConstant:1]
-    ]];
+    // Card 2: compact mode
+    UIView *card2 = [self makeCard:@"Compact Mode"
+                          subtitle:@"Example interface preference"];
+    self.compactSwitch = [[UISwitch alloc] init];
+    self.compactSwitch.on = NO;
+    [self.compactSwitch addTarget:self action:@selector(compactChanged:)
+                 forControlEvents:UIControlEventValueChanged];
+    [card2 addSubview:self.compactSwitch];
+    [self.cards addObject:card2];
+
+    // Card 3: scale slider
+    UIView *card3 = [self makeCard:@"Interface Scale"
+                          subtitle:@"Adjust the demo value"];
+    self.scaleText = [self label:@"100%" size:13];
+    self.scaleText.textAlignment = NSTextAlignmentRight;
+    [card3 addSubview:self.scaleText];
+
+    self.scaleSlider = [[UISlider alloc] init];
+    self.scaleSlider.minimumValue = 75;
+    self.scaleSlider.maximumValue = 150;
+    self.scaleSlider.value = 100;
+    self.scaleSlider.minimumTrackTintColor = self.blue;
+    [self.scaleSlider addTarget:self action:@selector(scaleChanged:)
+               forControlEvents:UIControlEventValueChanged];
+    [card3 addSubview:self.scaleSlider];
+    [self.cards addObject:card3];
+
+    // Card 4: reset button
+    UIView *card4 = [self makeCard:@"Reset Demo Settings"
+                          subtitle:@"Restore the example values"];
+    UIButton *reset = [self button:@"Reset"];
+    reset.backgroundColor = self.blue;
+    [reset addTarget:self action:@selector(resetSettings)
+    forControlEvents:UIControlEventTouchUpInside];
+    [card4 addSubview:reset];
+    reset.tag = 201;
+    [self.cards addObject:card4];
+
+    self.status = [self label:@"Ready" size:12];
+    self.status.textColor = self.muted;
+    [self.panel addSubview:self.status];
+
+    // Reopen control stays visible after the panel is hidden.
+    self.reopenButton = [self button:@"Universal Hub   ↗"];
+    self.reopenButton.backgroundColor = self.cardColor;
+    self.reopenButton.layer.borderWidth = 1;
+    self.reopenButton.layer.borderColor = self.blue.CGColor;
+    [self.reopenButton addTarget:self action:@selector(showHub)
+                forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:self.reopenButton];
+
+    [self setNeedsLayout];
 }
 
-#pragma mark - Content
-
-- (UIView *)makeCardWithTitle:(NSString *)title
-                     subtitle:(NSString *)subtitle {
+- (UIView *)makeCard:(NSString *)title subtitle:(NSString *)subtitle {
     UIView *card = [[UIView alloc] init];
-    card.translatesAutoresizingMaskIntoConstraints = NO;
     card.backgroundColor = self.cardColor;
-    card.layer.cornerRadius = 13;
+    card.layer.cornerRadius = 12;
     card.layer.borderWidth = 1;
-    card.layer.borderColor =
-        [self.accentColor colorWithAlphaComponent:0.25].CGColor;
+    card.layer.borderColor = [self.blue colorWithAlphaComponent:0.25].CGColor;
 
     UILabel *heading = [self label:title size:14];
-    UILabel *detail = [self label:subtitle size:11];
-    detail.textColor = self.mutedColor;
-
-    heading.translatesAutoresizingMaskIntoConstraints = NO;
-    detail.translatesAutoresizingMaskIntoConstraints = NO;
-
+    heading.tag = 301;
     [card addSubview:heading];
+
+    UILabel *detail = [self label:subtitle size:11];
+    detail.tag = 302;
+    detail.textColor = self.muted;
     [card addSubview:detail];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [heading.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:15],
-        [heading.topAnchor constraintEqualToAnchor:card.topAnchor constant:13],
-        [heading.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-12],
-
-        [detail.leadingAnchor constraintEqualToAnchor:heading.leadingAnchor],
-        [detail.topAnchor constraintEqualToAnchor:heading.bottomAnchor constant:4],
-        [detail.trailingAnchor constraintEqualToAnchor:heading.trailingAnchor],
-        [detail.bottomAnchor constraintLessThanOrEqualToAnchor:card.bottomAnchor constant:-10]
-    ]];
 
     return card;
 }
 
-- (void)buildContent {
-    self.content = [[UIView alloc] init];
-    self.content.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.panel addSubview:self.content];
+- (void)layoutSubviews {
+    [super layoutSubviews];
 
-    [NSLayoutConstraint activateConstraints:@[
-        [self.content.leadingAnchor constraintEqualToAnchor:self.sidebar.trailingAnchor constant:12],
-        [self.content.trailingAnchor constraintEqualToAnchor:self.panel.trailingAnchor constant:-12],
-        [self.content.topAnchor constraintEqualToAnchor:self.panel.topAnchor constant:88],
-        [self.content.bottomAnchor constraintEqualToAnchor:self.panel.bottomAnchor constant:-12]
-    ]];
+    CGFloat W = self.bounds.size.width;
+    CGFloat H = self.bounds.size.height;
+    if (W < 1 || H < 1) return;
 
-    UIScrollView *scroll = [[UIScrollView alloc] init];
-    scroll.translatesAutoresizingMaskIntoConstraints = NO;
-    scroll.alwaysBounceVertical = YES;
-    [self.content addSubview:scroll];
+    CGFloat margin = 12;
+    CGFloat panelW = MIN(900, W - margin * 2);
+    CGFloat panelH = MIN(620, H - margin * 2);
+    CGFloat panelX = (W - panelW) / 2;
+    CGFloat panelY = (H - panelH) / 2;
 
-    [NSLayoutConstraint activateConstraints:@[
-        [scroll.leadingAnchor constraintEqualToAnchor:self.content.leadingAnchor],
-        [scroll.trailingAnchor constraintEqualToAnchor:self.content.trailingAnchor],
-        [scroll.topAnchor constraintEqualToAnchor:self.content.topAnchor],
-        [scroll.bottomAnchor constraintEqualToAnchor:self.content.bottomAnchor]
-    ]];
+    self.panel.frame = CGRectMake(panelX, panelY, panelW, panelH);
+    self.reopenButton.frame =
+        CGRectMake((W - 210) / 2, (H - 48) / 2, 210, 48);
 
-    UIView *inner = [[UIView alloc] init];
-    inner.translatesAutoresizingMaskIntoConstraints = NO;
-    [scroll addSubview:inner];
+    CGFloat headerH = 74;
+    self.header.frame = CGRectMake(0, 0, panelW, headerH);
 
-    [NSLayoutConstraint activateConstraints:@[
-        [inner.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor],
-        [inner.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor],
-        [inner.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor],
-        [inner.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor],
-        [inner.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor]
-    ]];
+    UIView *icon = [self.header viewWithTag:101];
+    UIView *title = [self.header viewWithTag:102];
+    UIView *subtitle = [self.header viewWithTag:103];
+    UIView *close = [self.header viewWithTag:104];
 
-    self.mainStack = [[UIStackView alloc] init];
-    self.mainStack.translatesAutoresizingMaskIntoConstraints = NO;
-    self.mainStack.axis = UILayoutConstraintAxisVertical;
-    self.mainStack.spacing = 12;
-    self.mainStack.alignment = UIStackViewAlignmentFill;
-    [inner addSubview:self.mainStack];
+    icon.frame = CGRectMake(14, 14, 46, 46);
+    title.frame = CGRectMake(72, 13, panelW - 150, 29);
+    subtitle.frame = CGRectMake(73, 41, panelW - 160, 19);
+    close.frame = CGRectMake(panelW - 53, 12, 43, 48);
 
-    [NSLayoutConstraint activateConstraints:@[
-        [self.mainStack.leadingAnchor constraintEqualToAnchor:inner.leadingAnchor],
-        [self.mainStack.trailingAnchor constraintEqualToAnchor:inner.trailingAnchor],
-        [self.mainStack.topAnchor constraintEqualToAnchor:inner.topAnchor constant:2],
-        [self.mainStack.bottomAnchor constraintEqualToAnchor:inner.bottomAnchor constant:-8]
-    ]];
+    CGFloat sideW = MIN(155, panelW * 0.32);
+    CGFloat bodyH = panelH - headerH;
+    self.sidebar.frame = CGRectMake(0, headerH, sideW, bodyH);
+    self.separator.frame = CGRectMake(sideW, headerH, 1, bodyH);
 
-    UILabel *pageTitle = [self label:@"Main" size:22];
-    pageTitle.font = [UIFont boldSystemFontOfSize:22];
-    [self.mainStack addArrangedSubview:pageTitle];
+    for (NSInteger i = 0; i < self.navButtons.count; i++) {
+        UIButton *b = self.navButtons[i];
+        b.frame = CGRectMake(9, 15 + i * 50, sideW - 18, 42);
+        b.titleLabel.font = [UIFont systemFontOfSize:MIN(13, sideW / 10)
+                                               weight:UIFontWeightSemibold];
+    }
 
-    // Notifications example
-    UIView *notifications = [self makeCardWithTitle:@"Notification Toggle"
-                                            subtitle:@"Show or hide demo notifications"];
-    self.notificationSwitch = [[UISwitch alloc] init];
-    self.notificationSwitch.on = YES;
-    [self.notificationSwitch addTarget:self
-                                action:@selector(toggleChanged:)
-                      forControlEvents:UIControlEventValueChanged];
-    [notifications addSubview:self.notificationSwitch];
-    self.notificationSwitch.translatesAutoresizingMaskIntoConstraints = NO;
+    CGFloat contentX = sideW + 14;
+    CGFloat contentW = panelW - contentX - 12;
+    CGFloat availableH = bodyH - 20;
+    BOOL compact = availableH < 450;
 
-    [NSLayoutConstraint activateConstraints:@[
-        [notifications.heightAnchor constraintEqualToConstant:76],
-        [self.notificationSwitch.trailingAnchor constraintEqualToAnchor:notifications.trailingAnchor constant:-12],
-        [self.notificationSwitch.centerYAnchor constraintEqualToAnchor:notifications.centerYAnchor]
-    ]];
-    [self.mainStack addArrangedSubview:notifications];
+    self.pageTitle.frame = CGRectMake(contentX, headerH + 10, contentW, 30);
 
-    // Compact mode example
-    UIView *compact = [self makeCardWithTitle:@"Compact Mode"
-                                     subtitle:@"Example interface preference"];
-    self.compactSwitch = [[UISwitch alloc] init];
-    self.compactSwitch.on = NO;
-    [self.compactSwitch addTarget:self
-                           action:@selector(toggleChanged:)
-                 forControlEvents:UIControlEventValueChanged];
-    self.compactSwitch.translatesAutoresizingMaskIntoConstraints = NO;
-    [compact addSubview:self.compactSwitch];
+    CGFloat y = headerH + 49;
+    CGFloat gap = compact ? 8 : 11;
+    CGFloat regularH = compact ? 65 : 76;
 
-    [NSLayoutConstraint activateConstraints:@[
-        [compact.heightAnchor constraintEqualToConstant:76],
-        [self.compactSwitch.trailingAnchor constraintEqualToAnchor:compact.trailingAnchor constant:-12],
-        [self.compactSwitch.centerYAnchor constraintEqualToAnchor:compact.centerYAnchor]
-    ]];
-    [self.mainStack addArrangedSubview:compact];
+    for (NSInteger i = 0; i < self.cards.count; i++) {
+        UIView *card = self.cards[i];
+        CGFloat cardH = i == 2 ? (compact ? 94 : 108) : regularH;
+        card.frame = CGRectMake(contentX, y, contentW, cardH);
 
-    // Slider example
-    UIView *scaleCard = [self makeCardWithTitle:@"Interface Scale"
-                                       subtitle:@"Adjust the example value"];
+        UILabel *heading = [card viewWithTag:301];
+        UILabel *detail = [card viewWithTag:302];
+        heading.frame = CGRectMake(13, 11, contentW - 105, 22);
+        detail.frame = CGRectMake(13, 34, contentW - 105, 20);
 
-    self.scaleLabel = [self label:@"100%" size:13];
-    self.scaleLabel.textAlignment = NSTextAlignmentRight;
-    self.scaleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        if (i == 0) {
+            self.notificationSwitch.frame =
+                CGRectMake(contentW - 61, (cardH - 31) / 2, 51, 31);
+        } else if (i == 1) {
+            self.compactSwitch.frame =
+                CGRectMake(contentW - 61, (cardH - 31) / 2, 51, 31);
+        } else if (i == 2) {
+            self.scaleText.frame =
+                CGRectMake(contentW - 70, 10, 55, 22);
+            self.scaleSlider.frame =
+                CGRectMake(12, cardH - 36, contentW - 24, 28);
+        } else if (i == 3) {
+            UIButton *reset = [card viewWithTag:201];
+            reset.frame = CGRectMake(contentW - 82, (cardH - 34) / 2, 70, 34);
+        }
 
-    self.scaleSlider = [[UISlider alloc] init];
-    self.scaleSlider.translatesAutoresizingMaskIntoConstraints = NO;
-    self.scaleSlider.minimumValue = 75;
-    self.scaleSlider.maximumValue = 150;
-    self.scaleSlider.value = 100;
-    self.scaleSlider.minimumTrackTintColor = self.accentColor;
-    [self.scaleSlider addTarget:self
-                         action:@selector(sliderChanged:)
-               forControlEvents:UIControlEventValueChanged];
+        y += cardH + gap;
+    }
 
-    [scaleCard addSubview:self.scaleLabel];
-    [scaleCard addSubview:self.scaleSlider];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [scaleCard.heightAnchor constraintEqualToConstant:116],
-        [self.scaleLabel.trailingAnchor constraintEqualToAnchor:scaleCard.trailingAnchor constant:-14],
-        [self.scaleLabel.topAnchor constraintEqualToAnchor:scaleCard.topAnchor constant:12],
-        [self.scaleSlider.leadingAnchor constraintEqualToAnchor:scaleCard.leadingAnchor constant:12],
-        [self.scaleSlider.trailingAnchor constraintEqualToAnchor:scaleCard.trailingAnchor constant:-12],
-        [self.scaleSlider.bottomAnchor constraintEqualToAnchor:scaleCard.bottomAnchor constant:-12]
-    ]];
-
-    [self.mainStack addArrangedSubview:scaleCard];
-
-    // Reset example
-    UIView *resetCard = [self makeCardWithTitle:@"Reset Demo Settings"
-                                        subtitle:@"Restore the example controls"];
-
-    UIButton *resetButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [resetButton setTitle:@"Reset" forState:UIControlStateNormal];
-    [resetButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    resetButton.backgroundColor = self.accentColor;
-    resetButton.layer.cornerRadius = 9;
-    resetButton.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
-    resetButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [resetButton addTarget:self
-                    action:@selector(resetSettings)
-          forControlEvents:UIControlEventTouchUpInside];
-    [resetCard addSubview:resetButton];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [resetCard.heightAnchor constraintEqualToConstant:76],
-        [resetButton.trailingAnchor constraintEqualToAnchor:resetCard.trailingAnchor constant:-12],
-        [resetButton.centerYAnchor constraintEqualToAnchor:resetCard.centerYAnchor],
-        [resetButton.widthAnchor constraintEqualToConstant:70],
-        [resetButton.heightAnchor constraintEqualToConstant:34]
-    ]];
-
-    [self.mainStack addArrangedSubview:resetCard];
-
-    self.statusLabel = [self label:@"Ready" size:12];
-    self.statusLabel.textColor = self.mutedColor;
-    [self.mainStack addArrangedSubview:self.statusLabel];
+    self.status.frame = CGRectMake(contentX + 3,
+                                   MIN(y + 1, panelH - 29),
+                                   contentW - 6, 20);
 }
 
 #pragma mark - Actions
 
-- (void)toggleChanged:(UISwitch *)sender {
-    if (sender == self.notificationSwitch) {
-        self.statusLabel.text = sender.isOn
-            ? @"Demo notifications enabled"
-            : @"Demo notifications disabled";
-    } else {
-        self.statusLabel.text = sender.isOn
-            ? @"Compact mode enabled (demo)"
-            : @"Compact mode disabled (demo)";
-    }
+- (void)hideHub {
+    self.panel.hidden = YES;
+    self.reopenButton.hidden = NO;
 }
 
-- (void)sliderChanged:(UISlider *)sender {
-    self.scaleLabel.text =
+- (void)showHub {
+    self.reopenButton.hidden = YES;
+    self.panel.hidden = NO;
+}
+
+- (void)navigate:(UIButton *)sender {
+    NSArray *pages = @[@"Main", @"Settings", @"Config Profiles", @"Credits"];
+    if (sender.tag < 0 || sender.tag >= pages.count) return;
+
+    for (NSInteger i = 0; i < self.navButtons.count; i++) {
+        self.navButtons[i].backgroundColor =
+            i == sender.tag ? self.blue : self.cardColor;
+    }
+
+    self.pageTitle.text = pages[sender.tag];
+    self.status.text = [NSString stringWithFormat:@"%@ selected — demo only",
+                        pages[sender.tag]];
+}
+
+- (void)notificationChanged:(UISwitch *)sender {
+    self.status.text = sender.isOn
+        ? @"Demo notifications enabled"
+        : @"Demo notifications disabled";
+}
+
+- (void)compactChanged:(UISwitch *)sender {
+    self.status.text = sender.isOn
+        ? @"Compact mode enabled — demo"
+        : @"Compact mode disabled — demo";
+}
+
+- (void)scaleChanged:(UISlider *)sender {
+    self.scaleText.text =
         [NSString stringWithFormat:@"%ld%%", (long)roundf(sender.value)];
-    self.statusLabel.text = @"Demo scale updated";
+    self.status.text = @"Scale value updated";
 }
 
 - (void)resetSettings {
     self.notificationSwitch.on = YES;
     self.compactSwitch.on = NO;
     self.scaleSlider.value = 100;
-    self.scaleLabel.text = @"100%";
-    self.statusLabel.text = @"Demo settings restored";
-}
-
-- (void)navigate:(UIButton *)sender {
-    NSArray *pages = @[@"Main", @"Settings", @"Config Profiles", @"Credits"];
-    self.statusLabel.text =
-        [NSString stringWithFormat:@"%@ selected — demo", pages[sender.tag]];
-
-    for (UIView *view in self.navigation.arrangedSubviews) {
-        if ([view isKindOfClass:UIButton.class]) {
-            UIButton *button = (UIButton *)view;
-            button.backgroundColor =
-                button == sender ? self.accentColor : self.cardColor;
-        }
-    }
-}
-
-#pragma mark - Close / Reopen
-
-- (void)buildReopenButton {
-    self.reopenButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.reopenButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.reopenButton setTitle:@"  Universal Hub   ↗  "
-                       forState:UIControlStateNormal];
-    [self.reopenButton setTitleColor:UIColor.whiteColor
-                            forState:UIControlStateNormal];
-    self.reopenButton.titleLabel.font =
-        [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-    self.reopenButton.backgroundColor = self.cardColor;
-    self.reopenButton.layer.cornerRadius = 14;
-    self.reopenButton.layer.borderWidth = 1;
-    self.reopenButton.layer.borderColor = self.accentColor.CGColor;
-    self.reopenButton.hidden = YES;
-
-    [self.reopenButton addTarget:self
-                          action:@selector(showInterface)
-                forControlEvents:UIControlEventTouchUpInside];
-
-    [self.view addSubview:self.reopenButton];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.reopenButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [self.reopenButton.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
-        [self.reopenButton.widthAnchor constraintEqualToConstant:210],
-        [self.reopenButton.heightAnchor constraintEqualToConstant:52]
-    ]];
-}
-
-- (void)hideInterface {
-    self.panel.hidden = YES;
-    self.reopenButton.hidden = NO;
-}
-
-- (void)showInterface {
-    self.reopenButton.hidden = YES;
-    self.panel.hidden = NO;
+    self.scaleText.text = @"100%";
+    self.status.text = @"Demo settings restored";
 }
 
 @end
+
+#pragma mark - Automatic loader
+
+static void UHInstallOverlay(NSUInteger attempt) {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UHInstallOverlay(attempt);
+        });
+        return;
+    }
+
+    UIApplication *app = UIApplication.sharedApplication;
+    UIWindow *target = nil;
+
+    // Prefer the currently active app window.
+    for (UIWindow *window in app.windows) {
+        if (window.isKeyWindow && !window.hidden) {
+            target = window;
+            break;
+        }
+    }
+
+    // Fallback for apps that haven't marked a key window yet.
+    if (!target) {
+        for (UIWindow *window in app.windows) {
+            if (!window.hidden && window.alpha > 0 &&
+                window.windowLevel == UIWindowLevelNormal) {
+                target = window;
+                break;
+            }
+        }
+    }
+
+    if (!target) {
+        if (attempt < 40) {
+            dispatch_after(
+                dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                dispatch_get_main_queue(), ^{
+                    UHInstallOverlay(attempt + 1);
+                });
+        }
+        return;
+    }
+
+    // Prevent duplicate overlays if the loader runs more than once.
+    for (UIView *view in target.subviews) {
+        if ([view isKindOfClass:UHOverlay.class]) return;
+    }
+
+    UHOverlay *overlay = [[UHOverlay alloc] initWithFrame:target.bounds];
+    overlay.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [overlay build];
+
+    [target addSubview:overlay];
+    [target bringSubviewToFront:overlay];
+}
+
+// Called automatically when the dynamic library is loaded.
+__attribute__((constructor))
+static void UniversalHubEntry(void) {
+    @autoreleasepool {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UHInstallOverlay(0);
+        });
+    }
+}
