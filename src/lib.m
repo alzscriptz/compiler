@@ -10,6 +10,7 @@
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
+#import <dispatch/dispatch.h>
 
 static NSString * const K1SettingsKey = @"K1sUI.Settings";
 static NSString * const K1ConfigsKey = @"K1sUI.Configs";
@@ -133,8 +134,8 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSDictionary *saved = [defaults dictionaryForKey:K1SettingsKey];
     self.settings = saved ? [saved mutableCopy] : [@{
-        @"farm": @YES,
-        @"boost": @NO,
+        @"farm": @(YES),
+        @"boost": @(NO),
         @"speed": @50
     } mutableCopy];
 
@@ -571,7 +572,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.statusLabel.text = @"Slider value saved";
 }
 - (void)resetSettings {
-    self.settings = [@{@"farm": @YES, @"boost": @NO, @"speed": @50} mutableCopy];
+    self.settings = [@{@"farm": @(YES), @"boost": @(NO), @"speed": @50} mutableCopy];
     [self applySettingsToControls];
     [self saveCurrentControls];
     self.statusLabel.text = @"Demo settings reset";
@@ -837,22 +838,6 @@ static void K1sUIInstall(NSUInteger attempt) {
     UIWindow *target = nil;
     UIApplication *app = UIApplication.sharedApplication;
 
-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in app.connectedScenes) {
-            if (scene.activationState != UISceneActivationStateForegroundActive) continue;
-            if (![scene isKindOfClass:[UIWindowScene class]]) continue;
-            UIWindowScene *ws = (UIWindowScene *)scene;
-            for (UIWindow *window in ws.windows) {
-                if (window.isKeyWindow && !window.hidden) {
-                    target = window;
-                    break;
-                }
-            }
-            if (target) break;
-        }
-    }
-#endif
     if (!target) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
