@@ -12,14 +12,16 @@ __attribute__((constructor)) static void init() {
         NSMutableString *output = [NSMutableString string];
         [output appendString:@"=== iOS Binary & Slide Dump ===\n\n"];
         
+        NSString *mainExecPath = [[NSBundle mainBundle] executablePath];
+        
         // 2. Iterate through loaded Mach-O images to find UnityFramework or the main executable
         uint32_t imageCount = _dyld_image_count();
         for (uint32_t i = 0; i < imageCount; i++) {
             const char *imageName = _dyld_get_image_name(i);
             if (imageName) {
                 NSString *name = [NSString stringWithUTF8String:imageName];
-                // Target UnityFramework or the game binary
-                if ([name containsString:@"UnityFramework"] || [name hasSuffix:@appPathExtension]) { // Adjust if needed
+                // Target UnityFramework or the game's main binary
+                if ([name containsString:@"UnityFramework"] || [name isEqualToString:mainExecPath]) {
                     intptr_t slide = _dyld_get_image_vmaddr_slide(i);
                     const struct mach_header_64 *header = (const struct mach_header_64 *)_dyld_get_image_header(i);
                     
