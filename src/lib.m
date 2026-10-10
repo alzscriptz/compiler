@@ -144,7 +144,7 @@ static Vector3 K1CallVec3(void *self, MethodInfo *m) {
     if (!self || !m) return v;
     p_thread_attach(p_domain_get());
     Il2CppObject *boxed = p_runtime_invoke(m, self, NULL, NULL);
-    if (boxed) memcpy(&v, (char *)boxed + 0x10, sizeof(Vector3)); // skip box header
+    if (boxed) memcpy(&v, (char *)boxed + 0x10, sizeof(Vector3));
     return v;
 }
 static Quaternion K1CallQuat(void *self, MethodInfo *m) {
@@ -279,7 +279,7 @@ static void hook_Update(void *self) { g_player = self; orig_Update(self); }
 
 + (void)start {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        if (!K1ResolveAPI()) { NSLog(@"[K1] il2cpp not found"); return; }
+        if (!K1ResolveAPI()) { NSLog(@"[K1] il2cpp not ready yet"); return; }
         p_thread_attach(p_domain_get());
 
         Il2CppClass *player = K1Class("", "Player");
@@ -291,8 +291,8 @@ static void hook_Update(void *self) { g_player = self; orig_Update(self); }
 #if K1_HAVE_DOBBY
             MethodInfo *upd = p_class_get_method_from_name(player, "Update", 0);
             if (upd) {
-                void *fn = *(void **)((uintptr_t)upd + sizeof(void*) * 2); // methodPointer
-                DobbyHook(fn, (void *)hook_Update, (void **)&orig_Update);
+                void *fn = *(void **)((uintptr_t)upd + sizeof(void*) * 2);
+                if (fn) DobbyHook(fn, (void *)hook_Update, (void **)&orig_Update);
             }
 #endif
         }
@@ -409,13 +409,11 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     UILabel *l=[self label:t size:14 color:[UIColor whiteColor]]; l.tag=1001; [c addSubview:l];
 }
 
-// First toggle/slider inside a card (NOT self — avoids the viewWithTag receiver collision).
 - (UIView *)controlIn:(UIView *)card {
     for (UIView *v in card.subviews)
         if ([v isKindOfClass:[UISwitch class]] || [v isKindOfClass:[UISlider class]]) return v;
     return nil;
 }
-// First button inside a card (for the reset card).
 - (UIButton *)buttonIn:(UIView *)card {
     for (UIView *v in card.subviews)
         if ([v isKindOfClass:[UIButton class]]) return (UIButton *)v;
@@ -520,7 +518,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     CGFloat cx=sw+17, cw=pw-cx-17, ty=hh+13;
     self.pageTitle.frame=CGRectMake(cx,ty,cw,30);
     CGFloat py=ty+39;
-    self.page.frame=CGRectMake(cx,py,cw,MAX(0,ph-py-12));   // full height, no status row
+    self.page.frame=CGRectMake(cx,py,cw,MAX(0,ph-py-12));
     [self layoutCurrentPage];
     [self layoutMiniButton];
 }
@@ -624,7 +622,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     if(s.tag>=0&&s.tag<(NSInteger)n.count) [self showPage:n[s.tag]];
 }
 
-#pragma mark - Main page (real controls)
+#pragma mark - Main page
 
 - (UIView *)toggleCard:(NSString *)title tag:(NSInteger)tag {
     UIView *c=[self card]; c.tag=tag; [self addCardTitle:title toCard:c];
@@ -847,22 +845,29 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [dc addTarget:self action:@selector(copyDiscordLink) forControlEvents:UIControlEventTouchUpInside];
     UILabel *t=[self label:@"Discord" size:14 color:[UIColor whiteColor]]; t.tag=1001; [dc addSubview:t];
     UILabel *st=[self label:@"Tap to copy invite link" size:11 color:self.mutedColor]; st.tag=1002; [dc addSubview:st];
-    UIImageView *ci=[[UIImageView alloc] initWithImage:[UIImage imageNamed:@"doc.on.doc"]];
+    // FIXED: changed from imageNamed: to systemImageNamed: for SF Symbols
+    UIImageView *ci=[[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"doc.on.doc"]];
     ci.tintColor=self.mutedColor; ci.contentMode=UIViewContentModeScaleAspectFit; ci.tag=1003; [dc addSubview:ci];
     [self.page addSubview:dc];
 }
 - (void)copyDiscordLink { [UIPasteboard generalPasteboard].string=K1DiscordURL; }
 
-#pragma mark - minimize / passthrough
+#pragma mark - minimize / passthrough (FIXED TOUCH PASS-THROUGH)
 
 - (void)minimizeUI { self.minimized=YES; self.panel.hidden=YES; self.miniButton.hidden=NO; [self layoutMiniButton]; }
 - (void)showUI { self.minimized=NO; self.miniButton.hidden=YES; self.panel.hidden=NO; }
+
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    if(self.hidden||self.alpha<0.01||!self.userInteractionEnabled) return nil;
-    if(self.minimized){
-        if(self.miniButton.hidden) return nil;
-        CGPoint p=[self.miniButton convertPoint:point fromView:self];
-        if(CGRectContainsPoint(self.miniButton.bounds,p)) return [self.miniButton hitTest:p withEvent:event];
+    if (self.hidden || self.alpha < 0.01 || !self.userInteractionEnabled) return nil;
+    if (self.minimized) {
+        if (self.miniButton.hidden) return nil;
+        CGPoint p = [self.miniButton convertPoint:point fromView:self];
+        if (CGRectContainsPoint(self.miniButton.bounds, p)) return [self.miniButton hitTest:p withEvent:event];
+        return nil;
+    }
+    // Allow touches to pass through to the game if they are outside the panel window
+    CGPoint panelPoint = [self.panel convertPoint:point fromView:self];
+    if (!CGRectContainsPoint(self.panel.bounds, panelPoint)) {
         return nil;
     }
     return [super hitTest:point withEvent:event];
@@ -870,8 +875,16 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 @end
 
 #pragma mark =====================================================================
-#pragma mark entry
+#pragma mark entry & initialization hook
 #pragma mark =====================================================================
+
+static void *(*orig_il2cpp_init)(const char *domain_name) = NULL;
+static void *hook_il2cpp_init(const char *domain_name) {
+    void *ret = orig_il2cpp_init(domain_name);
+    // Safe initialization callback once il2cpp runtime is fully loaded
+    [K1Cheat start];
+    return ret;
+}
 
 static void K1Install(NSUInteger attempt) {
     if(![NSThread isMainThread]){ dispatch_async(dispatch_get_main_queue(),^{ K1Install(attempt); }); return; }
@@ -891,7 +904,13 @@ static void K1Install(NSUInteger attempt) {
 __attribute__((constructor))
 static void K1Entry(void) {
     @autoreleasepool {
-        [K1Cheat start];
+        void *initSym = dlsym(RTLD_DEFAULT, "il2cpp_init");
+        if (initSym && K1_HAVE_DOBBY) {
+            DobbyHook(initSym, (void *)hook_il2cpp_init, (void **)&orig_il2cpp_init);
+        } else {
+            // Fallback if il2cpp_init cannot be hooked
+            [K1Cheat start];
+        }
         dispatch_async(dispatch_get_main_queue(), ^{ K1Install(0); });
     }
 }
