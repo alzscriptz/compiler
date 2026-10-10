@@ -291,7 +291,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     UIView *logo = [self.header viewWithTag:201];
     UIView *logoIcon = [logo viewWithTag:202];
     UIView *appTitle = [self.header viewWithTag:203];
-    UIView *subtitle = [self.header viewWithTag:204];
+    UILabel *subtitle = (UILabel *)[self.header viewWithTag:204];
     UIView *minimize = [self.header viewWithTag:205];
     UIView *line = [self.header viewWithTag:206];
     UIView *divider = [self.panel viewWithTag:207];
