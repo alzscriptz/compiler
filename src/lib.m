@@ -67,7 +67,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     v.text = text;
     v.font = [UIFont systemFontOfSize:size weight:UIFontWeightMedium];
     v.textColor = color;
-    v.backgroundColor = UIColor.clearColor;
+    v.backgroundColor = [UIColor clearColor];
     v.adjustsFontSizeToFitWidth = YES;
     v.minimumScaleFactor = 0.75;
     return v;
@@ -75,7 +75,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 - (UIButton *)button:(NSString *)title {
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
     [b setTitle:title forState:UIControlStateNormal];
-    [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     b.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
     b.backgroundColor = self.cardColor;
     b.layer.cornerRadius = 11.0;
@@ -116,7 +116,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     return v;
 }
 - (void)addCardTitle:(NSString *)title toCard:(UIView *)card {
-    UILabel *l = [self label:title size:14 color:UIColor.whiteColor];
+    UILabel *l = [self label:title size:14 color:[UIColor whiteColor]];
     l.tag = 1001;
     [card addSubview:l];
 }
@@ -127,11 +127,11 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self = [super initWithFrame:frame];
     if (!self) return nil;
 
-    self.backgroundColor = UIColor.clearColor;
+    self.backgroundColor = [UIColor clearColor];
     self.opaque = NO;
     self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSDictionary *saved = [defaults dictionaryForKey:K1SettingsKey];
     self.settings = saved ? [saved mutableCopy] : [@{
         @"farm": @(YES),
@@ -189,11 +189,11 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 
     UIImageView *logoIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"sparkles"]];
     logoIcon.tag = 202;
-    logoIcon.tintColor = UIColor.whiteColor;
+    logoIcon.tintColor = [UIColor whiteColor];
     logoIcon.contentMode = UIViewContentModeScaleAspectFit;
     [logo addSubview:logoIcon];
 
-    UILabel *appTitle = [self label:@"K1sUI" size:22 color:UIColor.whiteColor];
+    UILabel *appTitle = [self label:@"K1sUI" size:22 color:[UIColor whiteColor]];
     appTitle.tag = 203;
     appTitle.font = [UIFont boldSystemFontOfSize:22];
     [self.header addSubview:appTitle];
@@ -240,12 +240,12 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         [self.navButtons addObject:b];
     }
 
-    self.pageTitle = [self label:@"Main" size:22 color:UIColor.whiteColor];
+    self.pageTitle = [self label:@"Main" size:22 color:[UIColor whiteColor]];
     self.pageTitle.font = [UIFont boldSystemFontOfSize:22];
     [self.panel addSubview:self.pageTitle];
 
     self.page = [[UIView alloc] initWithFrame:CGRectZero];
-    self.page.backgroundColor = UIColor.clearColor;
+    self.page.backgroundColor = [UIColor clearColor];
     [self.panel addSubview:self.page];
 
     self.statusLabel = [self label:@"Ready" size:11 color:self.mutedColor];
@@ -509,7 +509,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     UIView *sliderCard = [self card];
     sliderCard.tag = 712;
     [self addCardTitle:@"WalkSpeed Value" toCard:sliderCard];
-    self.speedValueLabel = [self label:@"50" size:14 color:UIColor.whiteColor];
+    self.speedValueLabel = [self label:@"50" size:14 color:[UIColor whiteColor]];
     self.speedValueLabel.textAlignment = NSTextAlignmentRight;
     [sliderCard addSubview:self.speedValueLabel];
 
@@ -552,7 +552,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     if (self.farmSwitch) self.settings[@"farm"] = @(self.farmSwitch.isOn);
     if (self.boostSwitch) self.settings[@"boost"] = @(self.boostSwitch.isOn);
     if (self.speedSlider) self.settings[@"speed"] = @(self.speedSlider.value);
-    [NSUserDefaults.standardUserDefaults setObject:self.settings forKey:K1SettingsKey];
+    [[NSUserDefaults standardUserDefaults] setObject:self.settings forKey:K1SettingsKey];
 }
 
 - (void)farmChanged:(UISwitch *)sender {
@@ -609,7 +609,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     for (UIButton *b in self.positionButtons) {
         BOOL selected = (b.tag == self.miniPosition);
         b.backgroundColor = selected ? self.blue : self.cardColor;
-        b.layer.borderColor = [(selected ? UIColor.whiteColor : self.blue)
+        b.layer.borderColor = [(selected ? [UIColor whiteColor] : self.blue)
             colorWithAlphaComponent:(selected ? 0.45 : 0.24)].CGColor;
     }
 }
@@ -624,7 +624,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.configNameField = [[UITextField alloc] initWithFrame:CGRectZero];
     self.configNameField.tag = 731;
     self.configNameField.placeholder = @"Config title";
-    self.configNameField.textColor = UIColor.whiteColor;
+    self.configNameField.textColor = [UIColor whiteColor];
     self.configNameField.tintColor = self.blue;
     self.configNameField.font = [UIFont systemFontOfSize:14];
     self.configNameField.backgroundColor = self.cardColor;
@@ -650,7 +650,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 }
 
 - (void)persistConfigs {
-    [NSUserDefaults.standardUserDefaults setObject:self.configs forKey:K1ConfigsKey];
+    [[NSUserDefaults standardUserDefaults] setObject:self.configs forKey:K1ConfigsKey];
 }
 
 - (void)createConfig {
@@ -664,7 +664,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     NSDictionary *config = @{
         @"name": name,
         @"settings": [self.settings copy],
-        @"date": @([NSDate.date timeIntervalSince1970])
+        @"date": @([[NSDate date] timeIntervalSince1970])
     };
     [self.configs addObject:config];
     [self persistConfigs];
@@ -696,8 +696,9 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         [row addSubview:rowGlass];
         [row sendSubviewToBack:rowGlass];
 
-        UILabel *name = [self label:[config[@"name"] isKindOfClass:NSString.class] ? config[@"name"] : @"Untitled"
-                               size:12 color:UIColor.whiteColor];
+        id rawName = config[@"name"];
+        NSString *displayName = [rawName isKindOfClass:[NSString class]] ? (NSString *)rawName : @"Untitled";
+        UILabel *name = [self label:displayName size:12 color:[UIColor whiteColor]];
         name.tag = 801;
         [row addSubview:name];
 
@@ -726,12 +727,12 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     if (index < 0 || index >= (NSInteger)self.configs.count) return;
     NSDictionary *config = self.configs[index];
     NSDictionary *values = config[@"settings"];
-    if (![values isKindOfClass:NSDictionary.class]) {
+    if (![values isKindOfClass:[NSDictionary class]]) {
         self.statusLabel.text = @"This config is invalid";
         return;
     }
     self.settings = [values mutableCopy];
-    [NSUserDefaults.standardUserDefaults setObject:self.settings forKey:K1SettingsKey];
+    [[NSUserDefaults standardUserDefaults] setObject:self.settings forKey:K1SettingsKey];
     [self showPage:@"Main"];
     [self applySettingsToControls];
     self.statusLabel.text = [NSString stringWithFormat:@"Loaded %@", config[@"name"]];
@@ -777,7 +778,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [discord sendSubviewToBack:discordGlass];
     [discord addTarget:self action:@selector(copyDiscordLink) forControlEvents:UIControlEventTouchUpInside];
 
-    UILabel *title = [self label:@"Discord" size:14 color:UIColor.whiteColor];
+    UILabel *title = [self label:@"Discord" size:14 color:[UIColor whiteColor]];
     title.tag = 1001;
     [discord addSubview:title];
     UILabel *subtitle = [self label:@"Tap to copy invite link" size:11 color:self.mutedColor];
@@ -792,7 +793,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 }
 
 - (void)copyDiscordLink {
-    UIPasteboard.generalPasteboard.string = K1DiscordURL;
+    [UIPasteboard generalPasteboard].string = K1DiscordURL;
     self.statusLabel.text = @"Discord invite copied";
 }
 
@@ -836,7 +837,7 @@ static void K1sUIInstall(NSUInteger attempt) {
     }
 
     UIWindow *target = nil;
-    UIApplication *app = UIApplication.sharedApplication;
+    UIApplication *app = [UIApplication sharedApplication];
 
     if (!target) {
 #pragma clang diagnostic push
@@ -859,7 +860,7 @@ static void K1sUIInstall(NSUInteger attempt) {
     }
 
     for (UIView *v in target.subviews) {
-        if ([v isKindOfClass:K1sUI.class]) return;
+        if ([v isKindOfClass:[K1sUI class]]) return;
     }
 
     K1sUI *ui = [[K1sUI alloc] initWithFrame:target.bounds];
