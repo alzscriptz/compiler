@@ -2,9 +2,30 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <dlfcn.h>
-#import <CoreGraphics/CoreGraphics.h>
 
-// Forward declarations for IL2CPP API
+// Function to write logs directly to a file on the phone (Viewable via Filza)
+void writeLog(NSString *format, ...) {
+    va_list args;
+    va_start(args, format);
+    NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *documentsDirectory = [paths objectAtIndex:0];
+    NSString *filePath = [documentsDirectory stringByAppendingPathComponent:@"tweak_debug.txt"];
+    
+    NSString *logEntry = [NSString stringWithFormat:@"[%@]: %@\n", [NSDate date], message];
+    
+    NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:filePath];
+    if (fileHandle) {
+        [fileHandle seekToEndOfFile];
+        [fileHandle writeData:[logEntry dataUsingEncoding:NSUTF8StringEncoding]];
+        [fileHandle closeFile];
+    } else {
+        [logEntry writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
+}
+
 typedef struct Il2CppDomain Il2CppDomain;
 typedef struct Il2CppThread Il2CppThread;
 typedef struct Il2CppClass Il2CppClass;
@@ -15,57 +36,56 @@ Il2CppThread* (*il2cpp_thread_attach)(Il2CppDomain* domain) = NULL;
 Il2CppClass* (*il2cpp_class_from_name)(const char* assemblyName, const char* namespaze, const char* typename) = NULL;
 MethodInfo* (*il2cpp_class_get_method_from_name)(Il2CppClass* klass, const char* name, int argsCount) = NULL;
 
-// Function pointer for the original Update method
 static void (*old_Update)(void *self) = NULL;
 
-// Hooked Update loop where ESP or runtime logic can be evaluated safely per-frame
 void hooked_Update(void *self) {
-    if (self) {
-        // Optional: Player iteration or ESP coordinate extraction logic here
-    }
-    
-    // Call original game update loop
     if (old_Update) {
         old_Update(self);
     }
 }
 
 void *init_il2cpp_hook(void *arg) {
-    // Wait for the game binary and IL2CPP framework to fully load into memory
+    writeLog("Tweak thread started, waiting for framework...");
     sleep(5); 
 
     void *il2cppHandle = dlopen("__Frameworks/UnityFramework.framework/UnityFramework", RTLD_NOLOAD);
     if (!il2cppHandle) {
+        writeLog("UnityFramework not found via RTLD_NOLOAD, trying global dlopen...");
         il2cppHandle = dlopen(NULL, RTLD_LAZY);
     }
 
     if (!il2cppHandle) {
+        writeLog("ERROR: Failed to open handle to UnityFramework/App binary!");
         return NULL;
     }
+    writeLog("Successfully obtained handle to framework.");
 
-    // Resolve IL2CPP runtime exports
     il2cpp_domain_get = dlsym(il2cppHandle, "il2cpp_domain_get");
     il2cpp_thread_attach = dlsym(il2cppHandle, "il2cpp_thread_attach");
     il2cpp_class_from_name = dlsym(il2cppHandle, "il2cpp_class_from_name");
     il2cpp_class_get_method_from_name = dlsym(il2cppHandle, "il2cpp_class_get_method_from_name");
 
-    if (il2cpp_domain_get && il2cpp_thread_attach) {
-        Il2CppDomain *domain = il2cpp_domain_get();
-        il2cpp_thread_attach(domain);
+    if (!il2cpp_domain_get || !il2cpp_thread_attach) {
+        writeLog("ERROR: Failed to resolve core IL2CPP functions!");
+        return NULL;
     }
 
-    // Example: Resolve a class and method safely (e.g., targeting Character class)
+    Il2CppDomain *domain = il2cpp_domain_get();
+    il2cpp_thread_attach(domain);
+    writeLog("Successfully attached thread to IL2CPP domain.");
+
     if (il2cpp_class_from_name) {
         Il2CppClass *characterClass = il2cpp_class_from_name("", "", "Character");
         if (characterClass) {
+            writeLog("SUCCESS: Found 'Character' class!");
             MethodInfo *updateMethod = il2cpp_class_get_method_from_name(characterClass, "Update", 0);
             if (updateMethod) {
-                void *methodPointer = *(void **)((uintptr_t)updateMethod + sizeof(void *) * 2);
-                if (methodPointer) {
-                    // Apply hook using your preferred hooking framework (e.g., Dobby / Fishhook)
-                    // DobbyHook(methodPointer, (void *)hooked_Update, (void **)&old_Update);
-                }
+                writeLog("SUCCESS: Found 'Update' method inside Character!");
+            } else {
+                writeLog("WARNING: Could not find 'Update' method in Character class.");
             }
+        } else {
+            writeLog("WARNING: Could not find 'Character' class in global-metadata.");
         }
     }
 
