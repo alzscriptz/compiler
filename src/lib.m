@@ -2,7 +2,7 @@
  [ K1sUI ]
  Single-file Objective-C overlay UI.
  Frameworks: UIKit, Foundation, QuartzCore
- ARC: enabled
+ Compile with ARC enabled.
  No custom UIViewController required.
 */
 
@@ -104,7 +104,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     v.layer.borderColor = [[UIColor colorWithRed:0.45 green:0.78 blue:1.0 alpha:0.34] CGColor];
     v.clipsToBounds = YES;
 
-    UIBlurEffect *effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark];
+    UIBlurEffect *effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
     UIVisualEffectView *glass = [[UIVisualEffectView alloc] initWithEffect:effect];
     glass.frame = v.bounds;
     glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -156,7 +156,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 - (void)buildUI {
     self.panel = [[UIView alloc] initWithFrame:CGRectZero];
     self.panel.backgroundColor = self.panelColor;
-    UIBlurEffect *panelEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
+    UIBlurEffect *panelEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
     UIVisualEffectView *panelGlass = [[UIVisualEffectView alloc] initWithEffect:panelEffect];
     panelGlass.frame = self.panel.bounds;
     panelGlass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -174,7 +174,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.header.backgroundColor = [UIColor colorWithRed:0.035 green:0.06 blue:0.12 alpha:0.52];
     [self.panel addSubview:self.header];
     UIVisualEffectView *headerGlass = [[UIVisualEffectView alloc] initWithEffect:
-        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
     headerGlass.tag = 987;
     headerGlass.userInteractionEnabled = NO;
     [self.header addSubview:headerGlass];
@@ -217,7 +217,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.sidebar.backgroundColor = [UIColor colorWithRed:0.035 green:0.055 blue:0.105 alpha:0.42];
     [self.panel addSubview:self.sidebar];
     UIVisualEffectView *sidebarGlass = [[UIVisualEffectView alloc] initWithEffect:
-        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
     sidebarGlass.tag = 986;
     sidebarGlass.userInteractionEnabled = NO;
     [self.sidebar addSubview:sidebarGlass];
@@ -687,7 +687,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         row.layer.borderColor = [[UIColor colorWithRed:0.45 green:0.78 blue:1.0 alpha:0.28] CGColor];
         row.clipsToBounds = YES;
         UIVisualEffectView *rowGlass = [[UIVisualEffectView alloc] initWithEffect:
-            [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
+            [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
         rowGlass.frame = row.bounds;
         rowGlass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         rowGlass.userInteractionEnabled = NO;
@@ -767,7 +767,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     discord.layer.borderColor = [[UIColor colorWithRed:0.45 green:0.78 blue:1.0 alpha:0.34] CGColor];
     discord.clipsToBounds = YES;
     UIVisualEffectView *discordGlass = [[UIVisualEffectView alloc] initWithEffect:
-        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
     discordGlass.frame = discord.bounds;
     discordGlass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     discordGlass.userInteractionEnabled = NO;
@@ -837,10 +837,11 @@ static void K1sUIInstall(NSUInteger attempt) {
     UIWindow *target = nil;
     UIApplication *app = UIApplication.sharedApplication;
 
+#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in app.connectedScenes) {
             if (scene.activationState != UISceneActivationStateForegroundActive) continue;
-            if (![scene isKindOfClass:UIWindowScene.class]) continue;
+            if (![scene isKindOfClass:[UIWindowScene class]]) continue;
             UIWindowScene *ws = (UIWindowScene *)scene;
             for (UIWindow *window in ws.windows) {
                 if (window.isKeyWindow && !window.hidden) {
@@ -851,6 +852,7 @@ static void K1sUIInstall(NSUInteger attempt) {
             if (target) break;
         }
     }
+#endif
     if (!target) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
