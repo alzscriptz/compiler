@@ -351,7 +351,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 @interface K1sUI : UIView <UITextFieldDelegate>
 @property(nonatomic,strong) UIView *panel,*header,*sidebar,*page;
 @property(nonatomic,strong) UIButton *miniButton;
-@property(nonatomic,strong) UILabel *pageTitle,*statusLabel;
+@property(nonatomic,strong) UILabel *pageTitle;
 @property(nonatomic,strong) UISwitch *aimSwitch,*triggerSwitch,*speedSwitch,*farmSwitch;
 @property(nonatomic,strong) UISlider *fovSlider,*smoothSlider,*speedSlider;
 @property(nonatomic,strong) UILabel *fovValue,*smoothValue,*speedValue;
@@ -409,10 +409,16 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     UILabel *l=[self label:t size:14 color:[UIColor whiteColor]]; l.tag=1001; [c addSubview:l];
 }
 
-// Returns the first toggle/slider inside a card (NOT self, avoids the viewWithTag receiver collision).
+// First toggle/slider inside a card (NOT self — avoids the viewWithTag receiver collision).
 - (UIView *)controlIn:(UIView *)card {
     for (UIView *v in card.subviews)
         if ([v isKindOfClass:[UISwitch class]] || [v isKindOfClass:[UISlider class]]) return v;
+    return nil;
+}
+// First button inside a card (for the reset card).
+- (UIButton *)buttonIn:(UIView *)card {
+    for (UIView *v in card.subviews)
+        if ([v isKindOfClass:[UIButton class]]) return (UIButton *)v;
     return nil;
 }
 
@@ -479,7 +485,6 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.pageTitle=[self label:@"Main" size:22 color:[UIColor whiteColor]]; self.pageTitle.font=[UIFont boldSystemFontOfSize:22];
     [self.panel addSubview:self.pageTitle];
     self.page=[UIView new]; self.page.backgroundColor=[UIColor clearColor]; [self.panel addSubview:self.page];
-    self.statusLabel=[self label:@"" size:11 color:self.mutedColor]; [self.panel addSubview:self.statusLabel];
 
     self.miniButton=[self button:@"K1"]; self.miniButton.backgroundColor=[self.panelColor colorWithAlphaComponent:0.65];
     self.miniButton.layer.cornerRadius=17; self.miniButton.layer.borderColor=self.blue.CGColor;
@@ -514,9 +519,8 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     }
     CGFloat cx=sw+17, cw=pw-cx-17, ty=hh+13;
     self.pageTitle.frame=CGRectMake(cx,ty,cw,30);
-    CGFloat py=ty+39, sh=22;
-    self.page.frame=CGRectMake(cx,py,cw,MAX(0,ph-py-sh-10));
-    self.statusLabel.frame=CGRectMake(cx,ph-sh-4,cw,sh);
+    CGFloat py=ty+39;
+    self.page.frame=CGRectMake(cx,py,cw,MAX(0,ph-py-12));   // full height, no status row
     [self layoutCurrentPage];
     [self layoutMiniButton];
 }
@@ -536,19 +540,24 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         CGFloat y=0;
         for(UIView *c in self.mainCards){
             BOOL isSlider=([c viewWithTag:1002]!=nil);
-            CGFloat h=isSlider?96:66;
+            BOOL hasControl=([self controlIn:c]!=nil);
+            CGFloat h=(isSlider||!hasControl)?96:66;
             c.frame=CGRectMake(0,y,W,h);
             UILabel *t=[c viewWithTag:1001];
             if(isSlider){
                 t.frame=CGRectMake(16,10,W-92,25);
                 UILabel *v=[c viewWithTag:1002]; v.frame=CGRectMake(W-68,10,48,25);
                 UISlider *s=(UISlider *)[self controlIn:c]; s.frame=CGRectMake(14,48,W-28,30);
-            } else {
+            } else if(hasControl){
                 t.frame=CGRectMake(17,0,MAX(80,W-104),h);
                 UISwitch *s=(UISwitch *)[self controlIn:c];
                 s.onTintColor=self.blue; s.thumbTintColor=[UIColor whiteColor];
                 s.backgroundColor=[UIColor colorWithWhite:0.55 alpha:0.30]; s.layer.cornerRadius=16;
                 s.frame=CGRectMake(W-67,(h-31)/2,51,31);
+            } else {
+                t.frame=CGRectMake(16,10,W-118,h-20);
+                UIButton *rb=[self buttonIn:c];
+                if(rb) rb.frame=CGRectMake(W-91,(h-34)/2,78,34);
             }
             y+=h+12;
         }
@@ -621,7 +630,9 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     UIView *c=[self card]; c.tag=tag; [self addCardTitle:title toCard:c];
     UISwitch *s=[[UISwitch alloc] initWithFrame:CGRectZero]; s.tag=tag;
     [s addTarget:self action:@selector(toggleChanged:) forControlEvents:UIControlEventValueChanged];
-    [c addSubview:s]; [self.mainCards addObject:c];
+    [c addSubview:s];
+    [self.mainScroll addSubview:c];
+    [self.mainCards addObject:c];
     return c;
 }
 - (UIView *)sliderCard:(NSString *)title tag:(NSInteger)tag min:(float)mn max:(float)mx {
@@ -632,12 +643,15 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     s.minimumValue=mn; s.maximumValue=mx; s.minimumTrackTintColor=self.blue;
     s.maximumTrackTintColor=[UIColor colorWithWhite:0.55 alpha:0.24];
     [s addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
-    [c addSubview:s]; [self.mainCards addObject:c];
+    [c addSubview:s];
+    [self.mainScroll addSubview:c];
+    [self.mainCards addObject:c];
     return c;
 }
 
 - (void)buildMainPage {
     self.mainScroll=[UIScrollView new]; self.mainScroll.alwaysBounceVertical=YES;
+    self.mainScroll.showsVerticalScrollIndicator=YES;
     [self.page addSubview:self.mainScroll];
 
     UIView *aim=[self toggleCard:@"Aimbot" tag:710];
@@ -660,10 +674,11 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [self addCardTitle:@"Reset All Settings" toCard:reset];
     UIButton *rb=[self button:@"Reset"]; rb.tag=731; rb.backgroundColor=self.blue;
     [rb addTarget:self action:@selector(resetSettings) forControlEvents:UIControlEventTouchUpInside];
-    [reset addSubview:rb]; [self.mainCards addObject:reset];
+    [reset addSubview:rb];
+    [self.mainScroll addSubview:reset];
+    [self.mainCards addObject:reset];
 
     [self applySettingsToControls];
-    [self updateStatus];
 }
 
 - (void)applySettingsToControls {
@@ -702,7 +717,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         case 712: self.settings[@"speed"]=@(s.isOn); [K1Cheat setSpeedHack:s.isOn]; break;
         case 713: self.settings[@"farm"]=@(s.isOn); [K1Cheat setFarm:s.isOn]; break;
     }
-    [self saveCurrentControls]; [self updateStatus];
+    [self saveCurrentControls];
 }
 - (void)sliderChanged:(UISlider *)s {
     UILabel *v=nil; UIView *c=s.superview;
@@ -713,17 +728,12 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         case 722: self.settings[@"speedval"]=@(s.value); [K1Cheat setWalkSpeed:s.value]; break;
     }
     if(v) v.text=[NSString stringWithFormat:@"%ld",(long)lrintf(s.value)];
-    [self saveCurrentControls]; [self updateStatus];
+    [self saveCurrentControls];
 }
 - (void)resetSettings {
     self.settings=[@{@"aim":@NO,@"fov":@45,@"smooth":@6,@"trigger":@NO,
                      @"speed":@NO,@"speedval":@50,@"farm":@NO} mutableCopy];
-    [self applySettingsToControls]; [self saveCurrentControls]; [self updateStatus];
-}
-- (void)updateStatus {
-    self.statusLabel.text=[NSString stringWithFormat:@"Aim:%@  Trig:%@  Speed:%@  Farm:%@",
-        self.aimSwitch.isOn?@"ON":@"off", self.triggerSwitch.isOn?@"ON":@"off",
-        self.speedSwitch.isOn?@"ON":@"off", self.farmSwitch.isOn?@"ON":@"off"];
+    [self applySettingsToControls]; [self saveCurrentControls];
 }
 
 #pragma mark - Settings: pill placement
