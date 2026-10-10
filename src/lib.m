@@ -1,58 +1,573 @@
-/* Unity IL2CPP Runtime Dumper - Objective-C / UIKit
- * ARC required. Runtime enumeration uses exported il2cpp_* APIs via dlsym.
- * Only reports data the target runtime actually exposes; method addresses are omitted by default.
+/*| |   //‎ ‎ ‎ ‎ ‎ ‎ //|| ‎ ‎ ‎ ‎‎ ‎ ||/////‎ ‎ ‎ ‎ ‎ ‎ ‎ /---\‎ ‎ ‎ ‎ ‎ ‎‎||\\‎ ‎ ‎ ‎||
+   | | //‎ ‎ ‎ ‎ ‎ ‎  // ||‎ ‎  ‎ ‎ ‎ ||‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎/‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ \‎ ‎ ‎ ‎ ‎‎‎|| \\‎ ‎ ‎||
+   | | \\ ‎ ‎ ‎‎ ‎ ‎ ‎ ‎  ‎ ‎|| ‎ ‎ ‎ ‎ ‎ ‎||///‎ ‎ ‎ ‎ ‎ ‎ ‎ \‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎/‎ ‎ ‎ ‎ ‎‎||‎ ‎ \\‎ ‎||
+   | |  \\‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ ‎ ||‎ ‎ ‎ ‎ ‎ ‎ ||////‎ ‎ ‎ ‎ ‎ ‎‎ ‎ \----/‎ ‎ ‎ ‎ ‎‎‎ ‎||‎ ‎ ‎ \\|| /-\|X
  */
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
-#import <dispatch/dispatch.h>
+#import <stdint.h>
+#import <stddef.h>
 
-#define IL2(name, ret, ...) typedef ret (*name)(__VA_ARGS__)
-IL2(DomainGet, void*, void); IL2(DomainAssemblies, void**, void*, size_t*); IL2(AssemblyImage, void*, void*);
-IL2(ImageName, const char*, void*); IL2(ImageClassCount, size_t, void*); IL2(ImageClass, void*, void*, size_t);
-IL2(ClassName, const char*, void*); IL2(ClassNamespace, const char*, void*); IL2(ClassFields, void*, void*, void**);
-IL2(FieldName, const char*, void*); IL2(FieldOffset, size_t, void*); IL2(FieldType, void*, void*); IL2(TypeName, char*, void*); IL2(FieldFlags, uint32_t, void*); IL2(TypeFree, void, char*);
-IL2(ClassMethods, void*, void*, void**); IL2(MethodName, const char*, void*); IL2(MethodParamCount, uint32_t, void*);
-static void *sym(const char *n){ return dlsym(RTLD_DEFAULT,n); }
-static NSString *S(const char *s){ return s ? [NSString stringWithUTF8String:s] : @"?"; }
-static BOOL systemAssembly(NSString *n){
- NSString *x=n.lowercaseString;
- // Do not exclude UnityEngine assemblies wholesale: game types may derive from them.
- NSArray *bad=@[@"system.",@"system",@"mscorlib",@"netstandard",@"mono.",@"ms.internal",@"newtonsoft",@"google.",@"facebook.",@"unity.services.",@"unity.timeline"];
- for(NSString *b in bad) if([x hasPrefix:b]) return YES;
- return NO;
-}
+#pragma mark - IL2CPP API declarations
+
+typedef void *UDDomain;
+typedef void *UDAssembly;
+typedef void *UDImage;
+typedef void *UDClass;
+typedef void *UDField;
+typedef void *UDMethod;
+typedef void *UDType;
+
+typedef UDDomain (*UDDomainGet)(void);
+typedef const UDAssembly **(*UDGetAssemblies)(UDDomain, size_t *);
+typedef UDImage (*UDAssemblyGetImage)(const UDAssembly *);
+typedef const char *(*UDImageGetName)(UDImage);
+typedef size_t (*UDImageGetClassCount)(UDImage);
+typedef UDClass (*UDImageGetClass)(UDImage, size_t);
+
+typedef const char *(*UDClassGetName)(UDClass);
+typedef const char *(*UDClassGetNamespace)(UDClass);
+typedef UDClass (*UDClassGetParent)(UDClass);
+typedef UDField (*UDClassGetFields)(UDClass, void **);
+typedef UDMethod (*UDClassGetMethods)(UDClass, void **);
+
+typedef const char *(*UDFieldGetName)(UDField);
+typedef UDType (*UDFieldGetType)(UDField);
+typedef size_t (*UDFieldGetOffset)(UDField);
+
+typedef const char *(*UDTypeGetName)(UDType);
+typedef void (*UDFree)(void *);
+
+typedef const char *(*UDMethodGetName)(UDMethod);
+typedef uint32_t (*UDMethodGetParamCount)(UDMethod);
+typedef UDType (*UDMethodGetParam)(UDMethod, uint32_t);
+typedef const char *(*UDMethodGetParamName)(UDMethod, uint32_t);
+typedef UDType (*UDMethodGetReturnType)(UDMethod);
+typedef uint32_t (*UDMethodGetToken)(UDMethod);
+
+#pragma mark - Dumper
 
 @interface UnityDumper : UIView <UITextFieldDelegate>
-@property UIView *panel,*header,*content; @property UIButton *mini; @property UITextField *search; @property UITextView *output; @property UILabel *status; @property NSMutableString *dump; @property BOOL minimized; @property CGFloat startY;
+
+@property(nonatomic, strong) UIView *panel;
+@property(nonatomic, strong) UIView *header;
+@property(nonatomic, strong) UILabel *titleLabel;
+@property(nonatomic, strong) UILabel *statusLabel;
+@property(nonatomic, strong) UITextField *filterField;
+@property(nonatomic, strong) UITextView *outputView;
+@property(nonatomic, strong) UIButton *minimizeButton;
+@property(nonatomic, strong) UIButton *dumpButton;
+@property(nonatomic, strong) UIButton *copyButton;
+@property(nonatomic, strong) UIButton *clearButton;
+
+@property(nonatomic, copy) NSString *fullDump;
+@property(nonatomic, copy) NSString *displayedDump;
+@property(nonatomic, assign) BOOL minimized;
+@property(nonatomic, assign) BOOL dumping;
+
+@property(nonatomic, assign) void *il2cppHandle;
+
+@property(nonatomic, assign) UDDomainGet domainGet;
+@property(nonatomic, assign) UDGetAssemblies getAssemblies;
+@property(nonatomic, assign) UDAssemblyGetImage assemblyGetImage;
+@property(nonatomic, assign) UDImageGetName imageGetName;
+@property(nonatomic, assign) UDImageGetClassCount imageGetClassCount;
+@property(nonatomic, assign) UDImageGetClass imageGetClass;
+
+@property(nonatomic, assign) UDClassGetName classGetName;
+@property(nonatomic, assign) UDClassGetNamespace classGetNamespace;
+@property(nonatomic, assign) UDClassGetParent classGetParent;
+@property(nonatomic, assign) UDClassGetFields classGetFields;
+@property(nonatomic, assign) UDClassGetMethods classGetMethods;
+
+@property(nonatomic, assign) UDFieldGetName fieldGetName;
+@property(nonatomic, assign) UDFieldGetType fieldGetType;
+@property(nonatomic, assign) UDFieldGetOffset fieldGetOffset;
+
+@property(nonatomic, assign) UDTypeGetName typeGetName;
+@property(nonatomic, assign) UDFree il2cppFree;
+
+@property(nonatomic, assign) UDMethodGetName methodGetName;
+@property(nonatomic, assign) UDMethodGetParamCount methodGetParamCount;
+@property(nonatomic, assign) UDMethodGetParam methodGetParam;
+@property(nonatomic, assign) UDMethodGetParamName methodGetParamName;
+@property(nonatomic, assign) UDMethodGetReturnType methodGetReturnType;
+@property(nonatomic, assign) UDMethodGetToken methodGetToken;
+
+- (void)install;
+- (void)runDump;
+- (void)copyAll;
+
 @end
+
 @implementation UnityDumper
-- (UIColor*)blue { return [UIColor colorWithRed:.15 green:.55 blue:1 alpha:1]; }
-- (UIButton*)btn:(NSString*)t { UIButton*b=[UIButton buttonWithType:UIButtonTypeSystem]; [b setTitle:t forState:UIControlStateNormal]; [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal]; b.titleLabel.font=[UIFont systemFontOfSize:13 weight:UIFontWeightSemibold]; b.backgroundColor=[UIColor colorWithWhite:1 alpha:.09]; b.layer.cornerRadius=7; b.layer.borderWidth=.5; b.layer.borderColor=[UIColor colorWithWhite:1 alpha:.12].CGColor; return b; }
-- (UILabel*)label:(NSString*)t size:(CGFloat)z { UILabel*l=[UILabel new]; l.text=t; l.textColor=UIColor.whiteColor; l.font=[UIFont systemFontOfSize:z weight:UIFontWeightSemibold]; return l; }
-- (instancetype)initWithFrame:(CGRect)f { if((self=[super initWithFrame:f])) { self.backgroundColor=UIColor.clearColor; self.dump=[NSMutableString new]; [self build]; } return self; }
-- (void)build {
- self.panel=[UIView new]; self.panel.backgroundColor=[UIColor colorWithRed:.025 green:.04 blue:.075 alpha:.94]; self.panel.layer.cornerRadius=17; self.panel.layer.borderWidth=1; self.panel.layer.borderColor=[self.blue colorWithAlphaComponent:.45].CGColor; self.panel.clipsToBounds=YES; [self addSubview:self.panel];
- self.header=[UIView new]; [self.panel addSubview:self.header]; UILabel*t=[self label:@"Unity Dumper" size:19]; t.frame=CGRectMake(14,8,220,25); [self.header addSubview:t]; UILabel*sub=[self label:@"IL2CPP runtime metadata" size:10]; sub.textColor=[UIColor colorWithWhite:.68 alpha:1]; sub.frame=CGRectMake(15,32,230,16); [self.header addSubview:sub]; UIButton*x=[self btn:@"â"]; x.frame=CGRectMake(0,8,34,32); x.autoresizingMask=UIViewAutoresizingFlexibleLeftMargin; [x addTarget:self action:@selector(minimize) forControlEvents:UIControlEventTouchUpInside]; [self.header addSubview:x];
- UIButton*d=[self btn:@"Dump"]; d.frame=CGRectMake(12,56,((self.bounds.size.width-36)/2),34); [d addTarget:self action:@selector(runDump) forControlEvents:UIControlEventTouchUpInside]; [self.panel addSubview:d]; UIButton*c=[self btn:@"Copy All"]; c.frame=CGRectMake(CGRectGetMaxX(d.frame)+12,56,d.frame.size.width,34); [c addTarget:self action:@selector(copyAll) forControlEvents:UIControlEventTouchUpInside]; [self.panel addSubview:c];
- self.search=[[UITextField alloc]initWithFrame:CGRectMake(12,98,self.bounds.size.width-24,34)]; self.search.placeholder=@"Filter classes, fields, methodsâ¦"; self.search.textColor=UIColor.whiteColor; self.search.tintColor=self.blue; self.search.font=[UIFont systemFontOfSize:12]; self.search.backgroundColor=[UIColor colorWithWhite:1 alpha:.07]; self.search.layer.cornerRadius=7; self.search.leftView=[[UIView alloc]initWithFrame:CGRectMake(0,0,9,1)]; self.search.leftViewMode=UITextFieldViewModeAlways; [self.search addTarget:self action:@selector(filterChanged) forControlEvents:UIControlEventEditingChanged]; [self.panel addSubview:self.search];
- self.output=[[UITextView alloc]initWithFrame:CGRectZero]; self.output.backgroundColor=[UIColor colorWithWhite:0 alpha:.22]; self.output.textColor=[UIColor colorWithRed:.8 green:.9 blue:1 alpha:1]; self.output.font=[UIFont monospacedSystemFontOfSize:10 weight:UIFontWeightRegular]; self.output.editable=NO; self.output.selectable=YES; [self.panel addSubview:self.output]; self.status=[self label:@"Ready Â· runtime API detection pending" size:10]; self.status.textColor=[UIColor colorWithWhite:.7 alpha:1]; [self.panel addSubview:self.status];
- UIPanGestureRecognizer*p=[[UIPanGestureRecognizer alloc]initWithTarget:self action:@selector(drag:)]; [self.header addGestureRecognizer:p];
+
+static NSString *UDString(const char *s) {
+    if (!s) return @"<unknown>";
+    NSString *value = [NSString stringWithUTF8String:s];
+    return value ?: @"<invalid-utf8>";
 }
-- (void)layoutSubviews { [super layoutSubviews]; if(!self.minimized){ CGFloat w=MIN(390,self.bounds.size.width-24), h=MIN(590,self.bounds.size.height-50); self.panel.frame=CGRectMake((self.bounds.size.width-w)/2,(self.bounds.size.height-h)/2,w,h); self.header.frame=CGRectMake(0,0,w,50); for(UIView*v in self.header.subviews) if([v isKindOfClass:UIButton.class]) v.frame=CGRectMake(w-46,8,34,32); self.output.frame=CGRectMake(12,140,w-24,h-177); self.status.frame=CGRectMake(12,h-30,w-24,18); } else { self.panel.frame=CGRectMake(0,0,100,38); self.header.frame=self.panel.bounds; self.output.hidden=YES; self.search.hidden=YES; self.status.hidden=YES; for(UIView*v in self.panel.subviews) if(v!=self.header) v.hidden=YES; for(UIView*v in self.header.subviews) if([v isKindOfClass:UILabel.class]) v.hidden=YES; self.mini.hidden=NO; } }
-- (void)minimize { self.minimized=!self.minimized; if(self.minimized){ for(UIView*v in self.panel.subviews) if([v isKindOfClass:UIButton.class]||v==self.search||v==self.output||v==self.status) v.hidden=YES; self.panel.backgroundColor=[UIColor colorWithRed:.025 green:.04 blue:.075 alpha:.98]; } else { for(UIView*v in self.panel.subviews) v.hidden=NO; for(UIView*v in self.header.subviews) v.hidden=NO; } [self setNeedsLayout]; }
-- (void)drag:(UIPanGestureRecognizer*)g { CGPoint d=[g translationInView:self]; if(g.state==UIGestureRecognizerStateChanged){ CGRect r=self.panel.frame; r.origin.x+=d.x; r.origin.y+=d.y; r.origin.x=MAX(0,MIN(self.bounds.size.width-r.size.width,r.origin.x)); r.origin.y=MAX(0,MIN(self.bounds.size.height-r.size.height,r.origin.y)); self.panel.frame=r; [g setTranslation:CGPointZero inView:self]; } }
-- (void)filterChanged { [self renderFiltered]; }
-- (void)renderFiltered { NSString*q=self.search.text.lowercaseString?:@""; NSMutableArray*a=[NSMutableArray new]; for(NSString*l in [self.dump componentsSeparatedByString:@"\n"]) if(!q.length||[l.lowercaseString containsString:q]) [a addObject:l]; self.output.text=[a componentsJoinedByString:@"\n"]; }
-- (void)runDump { [self endEditing:YES]; [self.dump setString:@""]; self.status.text=@"Inspecting IL2CPP exportsâ¦"; dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
- DomainGet dg=(DomainGet)sym("il2cpp_domain_get"); DomainAssemblies da=(DomainAssemblies)sym("il2cpp_domain_get_assemblies"); AssemblyImage ai=(AssemblyImage)sym("il2cpp_assembly_get_image"); ImageName in=(ImageName)sym("il2cpp_image_get_name"); ImageClassCount cc=(ImageClassCount)sym("il2cpp_image_get_class_count"); ImageClass cl=(ImageClass)sym("il2cpp_image_get_class"); ClassName cn=(ClassName)sym("il2cpp_class_get_name"); ClassNamespace ns=(ClassNamespace)sym("il2cpp_class_get_namespace"); ClassFields cf=(ClassFields)sym("il2cpp_class_get_fields"); FieldName fn=(FieldName)sym("il2cpp_field_get_name"); FieldOffset fo=(FieldOffset)sym("il2cpp_field_get_offset"); FieldType ft=(FieldType)sym("il2cpp_field_get_type"); TypeName tn=(TypeName)sym("il2cpp_type_get_name"); FieldFlags ff=(FieldFlags)sym("il2cpp_field_get_flags"); TypeFree tfree=(TypeFree)sym("il2cpp_free"); ClassMethods cm=(ClassMethods)sym("il2cpp_class_get_methods"); MethodName mn=(MethodName)sym("il2cpp_method_get_name"); MethodParamCount pc=(MethodParamCount)sym("il2cpp_method_get_param_count");
- if(!dg||!da||!ai||!in||!cc||!cl||!cn||!ns||!cf||!fn||!fo||!ft||!tn||!ff||!cm||!mn||!pc){ dispatch_async(dispatch_get_main_queue(),^{ self.status.text=@"IL2CPP exports unavailable in this process"; self.output.text=@"No dump produced. This process may not be a Unity IL2CPP game, exports may be hidden, or the runtime may not be initialized. No offsets were guessed."; }); return; }
- void*domain=dg(); if(!domain){ dispatch_async(dispatch_get_main_queue(),^{self.status.text=@"IL2CPP domain not ready";}); return;} size_t n=0; void**assemblies=da(domain,&n); NSMutableString*out=[NSMutableString new]; NSUInteger gameClasses=0, fields=0, methods=0;
- for(size_t i=0;i<n;i++){ void*image=ai(assemblies[i]); if(!image)continue; NSString*iname=S(in(image)); if(systemAssembly(iname))continue; size_t count=cc(image); for(size_t j=0;j<count;j++){ void*k=cl(image,j); if(!k)continue; NSString*name=S(cn(k)),*space=S(ns(k)); if([name hasPrefix:@"<"]||[name containsString:@"DisplayClass"])continue; gameClasses++; [out appendFormat:@"\n[%@] %@%@\n",iname,[space isEqual:@""]?@"": [space stringByAppendingString:@"."],name]; void*iter=NULL,*field=NULL; while((field=cf(k,&iter))){ const char*raw=tn(ft(field)); NSString*type=raw?S(raw):@"?"; size_t off=fo(field); [out appendFormat:@"  FIELD %@ %@ +0x%zx\n",type,S(fn(field)),off]; fields++; } iter=NULL; void*m=NULL; while((m=cm(k,&iter))){ [out appendFormat:@"  METHOD %@ (%u params)\n",S(mn(m)),pc(m)]; methods++; } } }
- dispatch_async(dispatch_get_main_queue(),^{ [self.dump setString:out]; [self renderFiltered]; self.status.text=[NSString stringWithFormat:@"Done Â· %lu classes Â· %lu fields Â· %lu methods",(unsigned long)gameClasses,(unsigned long)fields,(unsigned long)methods]; if(!gameClasses)self.output.text=@"Runtime API responded, but no non-system assemblies/classes passed the filter. This is not evidence that the game has no classes."; });
- }); }
-- (void)copyAll { if(!self.output.text.length){self.status.text=@"Nothing to copy â run Dump first";return;} UIPasteboard.generalPasteboard.string=self.output.text; self.status.text=@"Filtered results copied"; }
+
+- (void)install {
+    self.fullDump = @"";
+    self.displayedDump = @"";
+    self.backgroundColor = UIColor.clearColor;
+    self.frame = UIScreen.mainScreen.bounds;
+    self.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+                            UIViewAutoresizingFlexibleHeight;
+
+    [self resolveIL2CPP];
+    [self buildUI];
+    [self updateStatus];
+
+    // Keep the overlay responsive while the runtime initializes.
+    // The user can tap Dump again if IL2CPP is not ready yet.
+}
+
+- (void)resolveIL2CPP {
+    // Prefer the runtime already loaded in this process.
+    self.il2cppHandle = dlopen(NULL, RTLD_NOW);
+
+#define UD_RESOLVE(property, symbol) \
+    self.property = ( __typeof__(self.property) )dlsym(self.il2cppHandle, symbol)
+
+    UD_RESOLVE(domainGet, "il2cpp_domain_get");
+    UD_RESOLVE(getAssemblies, "il2cpp_domain_get_assemblies");
+    UD_RESOLVE(assemblyGetImage, "il2cpp_assembly_get_image");
+    UD_RESOLVE(imageGetName, "il2cpp_image_get_name");
+    UD_RESOLVE(imageGetClassCount, "il2cpp_image_get_class_count");
+    UD_RESOLVE(imageGetClass, "il2cpp_image_get_class");
+
+    UD_RESOLVE(classGetName, "il2cpp_class_get_name");
+    UD_RESOLVE(classGetNamespace, "il2cpp_class_get_namespace");
+    UD_RESOLVE(classGetParent, "il2cpp_class_get_parent");
+    UD_RESOLVE(classGetFields, "il2cpp_class_get_fields");
+    UD_RESOLVE(classGetMethods, "il2cpp_class_get_methods");
+
+    UD_RESOLVE(fieldGetName, "il2cpp_field_get_name");
+    UD_RESOLVE(fieldGetType, "il2cpp_field_get_type");
+    UD_RESOLVE(fieldGetOffset, "il2cpp_field_get_offset");
+
+    UD_RESOLVE(typeGetName, "il2cpp_type_get_name");
+    UD_RESOLVE(il2cppFree, "il2cpp_free");
+
+    UD_RESOLVE(methodGetName, "il2cpp_method_get_name");
+    UD_RESOLVE(methodGetParamCount, "il2cpp_method_get_param_count");
+    UD_RESOLVE(methodGetParam, "il2cpp_method_get_param");
+    UD_RESOLVE(methodGetParamName, "il2cpp_method_get_param_name");
+    UD_RESOLVE(methodGetReturnType, "il2cpp_method_get_return_type");
+    UD_RESOLVE(methodGetToken, "il2cpp_method_get_token");
+
+#undef UD_RESOLVE
+}
+
+- (BOOL)hasMinimumAPI {
+    return self.domainGet &&
+           self.getAssemblies &&
+           self.assemblyGetImage &&
+           self.imageGetName &&
+           self.imageGetClassCount &&
+           self.imageGetClass &&
+           self.classGetName &&
+           self.classGetFields &&
+           self.classGetMethods;
+}
+
+- (void)buildUI {
+    self.panel = [[UIView alloc] initWithFrame:
+                  CGRectMake(16, 90, MIN(UIScreen.mainScreen.bounds.size.width - 32, 520), 470)];
+    self.panel.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.97];
+    self.panel.layer.cornerRadius = 12;
+    self.panel.layer.borderWidth = 1;
+    self.panel.layer.borderColor = UIColor.grayColor.CGColor;
+    self.panel.clipsToBounds = YES;
+    [self addSubview:self.panel];
+
+    self.header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.panel.bounds.size.width, 42)];
+    self.header.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.header.backgroundColor = [UIColor colorWithWhite:0.16 alpha:1];
+    [self.panel addSubview:self.header];
+
+    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 0, 180, 42)];
+    self.titleLabel.text = @"Unity IL2CPP Dumper";
+    self.titleLabel.textColor = UIColor.whiteColor;
+    self.titleLabel.font = [UIFont boldSystemFontOfSize:14];
+    [self.header addSubview:self.titleLabel];
+
+    self.minimizeButton = [self button:@"−" frame:
+                           CGRectMake(self.panel.bounds.size.width - 42, 3, 38, 36)];
+    self.minimizeButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    [self.minimizeButton addTarget:self action:@selector(toggleMinimize)
+                  forControlEvents:UIControlEventTouchUpInside];
+    [self.header addSubview:self.minimizeButton];
+
+    CGFloat width = self.panel.bounds.size.width;
+
+    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 46, width - 20, 24)];
+    self.statusLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.statusLabel.font = [UIFont systemFontOfSize:11];
+    self.statusLabel.textColor = UIColor.lightGrayColor;
+    [self.panel addSubview:self.statusLabel];
+
+    self.filterField = [[UITextField alloc] initWithFrame:CGRectMake(10, 74, width - 20, 34)];
+    self.filterField.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.filterField.placeholder = @"Filter classes, fields, methods…";
+    self.filterField.backgroundColor = [UIColor colorWithWhite:0.18 alpha:1];
+    self.filterField.textColor = UIColor.whiteColor;
+    self.filterField.tintColor = UIColor.whiteColor;
+    self.filterField.font = [UIFont systemFontOfSize:12];
+    self.filterField.borderStyle = UITextBorderStyleRoundedRect;
+    self.filterField.delegate = self;
+    [self.filterField addTarget:self action:@selector(filterChanged)
+               forControlEvents:UIControlEventEditingChanged];
+    [self.panel addSubview:self.filterField];
+
+    CGFloat buttonY = 114;
+    CGFloat buttonW = (width - 32) / 3;
+
+    self.dumpButton = [self button:@"Dump" frame:
+                       CGRectMake(10, buttonY, buttonW, 34)];
+    [self.dumpButton addTarget:self action:@selector(runDump)
+              forControlEvents:UIControlEventTouchUpInside];
+    [self.panel addSubview:self.dumpButton];
+
+    self.copyButton = [self button:@"Copy All" frame:
+                       CGRectMake(16 + buttonW, buttonY, buttonW, 34)];
+    [self.copyButton addTarget:self action:@selector(copyAll)
+              forControlEvents:UIControlEventTouchUpInside];
+    [self.panel addSubview:self.copyButton];
+
+    self.clearButton = [self button:@"Clear" frame:
+                        CGRectMake(22 + buttonW * 2, buttonY, buttonW, 34)];
+    [self.clearButton addTarget:self action:@selector(clearOutput)
+               forControlEvents:UIControlEventTouchUpInside];
+    [self.panel addSubview:self.clearButton];
+
+    CGFloat outputY = 156;
+    self.outputView = [[UITextView alloc] initWithFrame:
+                       CGRectMake(10, outputY, width - 20,
+                                  self.panel.bounds.size.height - outputY - 10)];
+    self.outputView.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+                                       UIViewAutoresizingFlexibleHeight;
+    self.outputView.backgroundColor = [UIColor colorWithWhite:0.03 alpha:1];
+    self.outputView.textColor = [UIColor colorWithRed:0.65 green:1 blue:0.68 alpha:1];
+    self.outputView.font = [UIFont monospacedSystemFontOfSize:10
+                                                       weight:UIFontWeightRegular];
+    self.outputView.editable = NO;
+    self.outputView.selectable = YES;
+    [self.panel addSubview:self.outputView];
+
+    UIPanGestureRecognizer *pan =
+        [[UIPanGestureRecognizer alloc] initWithTarget:self
+                                                action:@selector(dragPanel:)];
+    [self.header addGestureRecognizer:pan];
+}
+
+- (UIButton *)button:(NSString *)title frame:(CGRect)frame {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.frame = frame;
+    button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
+                              UIViewAutoresizingFlexibleRightMargin;
+    button.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1];
+    button.layer.cornerRadius = 6;
+    [button setTitle:title forState:UIControlStateNormal];
+    [button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont boldSystemFontOfSize:12];
+    return button;
+}
+
+- (void)toggleMinimize {
+    self.minimized = !self.minimized;
+
+    for (UIView *view in self.panel.subviews) {
+        if (view == self.header) continue;
+        view.hidden = self.minimized;
+    }
+
+    self.minimizeButton.hidden = NO;
+    [self.minimizeButton setTitle:(self.minimized ? @"+" : @"−")
+                         forState:UIControlStateNormal];
+
+    CGRect frame = self.panel.frame;
+    frame.size.height = self.minimized ? 42 : 470;
+    self.panel.frame = frame;
+}
+
+- (void)dragPanel:(UIPanGestureRecognizer *)gesture {
+    CGPoint delta = [gesture translationInView:self];
+    CGRect frame = self.panel.frame;
+    frame.origin.x += delta.x;
+    frame.origin.y += delta.y;
+
+    CGFloat maxX = MAX(0, self.bounds.size.width - frame.size.width);
+    CGFloat maxY = MAX(0, self.bounds.size.height - frame.size.height);
+    frame.origin.x = MIN(MAX(0, frame.origin.x), maxX);
+    frame.origin.y = MIN(MAX(0, frame.origin.y), maxY);
+
+    self.panel.frame = frame;
+    [gesture setTranslation:CGPointZero inView:self];
+}
+
+- (void)updateStatus {
+    if (![self hasMinimumAPI]) {
+        self.statusLabel.text = @"IL2CPP exports unavailable — check runtime readiness";
+        return;
+    }
+
+    UDDomain domain = self.domainGet();
+    self.statusLabel.text = domain
+        ? @"Runtime detected — tap Dump"
+        : @"IL2CPP not ready — tap Dump to retry";
+}
+
+- (NSString *)typeString:(UDType)type {
+    if (!type || !self.typeGetName) return @"<unknown>";
+    char *raw = (char *)self.typeGetName(type);
+    NSString *result = UDString(raw);
+    if (raw && self.il2cppFree) self.il2cppFree(raw);
+    return result;
+}
+
+- (void)appendFieldsForClass:(UDClass)klass to:(NSMutableString *)out {
+    if (!self.classGetFields) return;
+
+    void *iterator = NULL;
+    UDField field = NULL;
+
+    while ((field = self.classGetFields(klass, &iterator))) {
+        NSString *name = self.fieldGetName
+            ? UDString(self.fieldGetName(field)) : @"<unknown>";
+        NSString *type = self.fieldGetType
+            ? [self typeString:self.fieldGetType(field)] : @"<unknown>";
+
+        if (self.fieldGetOffset) {
+            size_t offset = self.fieldGetOffset(field);
+            [out appendFormat:@"    %@ %@; // offset +0x%zx\n",
+             type, name, offset];
+        } else {
+            [out appendFormat:@"    %@ %@; // offset unavailable\n",
+             type, name];
+        }
+    }
+}
+
+- (void)appendMethodsForClass:(UDClass)klass to:(NSMutableString *)out {
+    if (!self.classGetMethods) return;
+
+    void *iterator = NULL;
+    UDMethod method = NULL;
+
+    while ((method = self.classGetMethods(klass, &iterator))) {
+        NSString *name = self.methodGetName
+            ? UDString(self.methodGetName(method)) : @"<unknown>";
+
+        NSString *returnType = self.methodGetReturnType
+            ? [self typeString:self.methodGetReturnType(method)] : @"?";
+
+        uint32_t count = self.methodGetParamCount
+            ? self.methodGetParamCount(method) : 0;
+
+        [out appendFormat:@"    %@ %@(", returnType, name];
+
+        for (uint32_t i = 0; i < count; i++) {
+            if (i) [out appendString:@", "];
+
+            UDType paramType = self.methodGetParam
+                ? self.methodGetParam(method, i) : NULL;
+            NSString *type = [self typeString:paramType];
+
+            const char *rawName = self.methodGetParamName
+                ? self.methodGetParamName(method, i) : NULL;
+            NSString *paramName = rawName
+                ? UDString(rawName)
+                : [NSString stringWithFormat:@"arg%u", i];
+
+            [out appendFormat:@"%@ %@", type, paramName];
+        }
+
+        if (self.methodGetToken) {
+            [out appendFormat:@"); // metadata token 0x%08X\n",
+             self.methodGetToken(method)];
+        } else {
+            [out appendString:@"); // method address not resolved\n"];
+        }
+    }
+}
+
+- (void)runDump {
+    if (self.dumping) return;
+
+    if (![self hasMinimumAPI]) {
+        [self resolveIL2CPP];
+        [self updateStatus];
+
+        if (![self hasMinimumAPI]) {
+            self.statusLabel.text = @"Required IL2CPP exports not found";
+            return;
+        }
+    }
+
+    UDDomain domain = self.domainGet();
+    if (!domain) {
+        self.statusLabel.text = @"IL2CPP domain not ready — retry shortly";
+        return;
+    }
+
+    self.dumping = YES;
+    self.dumpButton.enabled = NO;
+    self.statusLabel.text = @"Enumerating assemblies…";
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSMutableString *result = [NSMutableString string];
+        size_t assemblyCount = 0;
+
+        const UDAssembly **assemblies =
+            self.getAssemblies(domain, &assemblyCount);
+
+        [result appendString:@"Unity IL2CPP metadata dump\n"];
+        [result appendFormat:@"Assemblies: %zu\n\n", assemblyCount];
+
+        if (!assemblies || assemblyCount == 0) {
+            [result appendString:@"No assemblies returned by the runtime.\n"];
+        } else {
+            for (size_t ai = 0; ai < assemblyCount; ai++) {
+                UDImage image = self.assemblyGetImage(assemblies[ai]);
+                if (!image) continue;
+
+                NSString *imageName = UDString(self.imageGetName(image));
+                size_t classCount = self.imageGetClassCount(image);
+
+                [result appendFormat:@"\n// Assembly: %@ (%zu classes)\n",
+                 imageName, classCount];
+
+                for (size_t ci = 0; ci < classCount; ci++) {
+                    UDClass klass = self.imageGetClass(image, ci);
+                    if (!klass) continue;
+
+                    NSString *className = UDString(self.classGetName(klass));
+                    NSString *namespaceName = self.classGetNamespace
+                        ? UDString(self.classGetNamespace(klass)) : @"";
+
+                    NSString *qualifiedName = namespaceName.length
+                        ? [NSString stringWithFormat:@"%@.%@", namespaceName, className]
+                        : className;
+
+                    [result appendFormat:@"\nclass %@\n{\n", qualifiedName];
+                    [self appendFieldsForClass:klass to:result];
+                    [self appendString:@"    // Methods\n" to:result];
+                    [self appendMethodsForClass:klass to:result];
+                    [result appendString:@"}\n"];
+                }
+            }
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.fullDump = result;
+            self.dumping = NO;
+            self.dumpButton.enabled = YES;
+            [self applyFilter];
+            self.statusLabel.text =
+                [NSString stringWithFormat:@"Dump complete — %lu characters",
+                 (unsigned long)self.fullDump.length];
+        });
+    });
+}
+
+- (void)appendString:(NSString *)string to:(NSMutableString *)out {
+    [out appendString:string];
+}
+
+- (void)filterChanged {
+    [self applyFilter];
+}
+
+- (void)applyFilter {
+    NSString *query = self.filterField.text ?: @"";
+
+    if (query.length == 0) {
+        self.displayedDump = self.fullDump ?: @"";
+    } else {
+        NSMutableArray<NSString *> *matches = [NSMutableArray array];
+        NSArray<NSString *> *lines =
+            [(self.fullDump ?: @"") componentsSeparatedByString:@"\n"];
+
+        for (NSString *line in lines) {
+            if ([line rangeOfString:query
+                            options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                [matches addObject:line];
+            }
+        }
+
+        self.displayedDump = [matches componentsJoinedByString:@"\n"];
+    }
+
+    self.outputView.text = self.displayedDump;
+}
+
+- (void)copyAll {
+    if (self.fullDump.length == 0) {
+        self.statusLabel.text = @"Nothing to copy — run Dump first";
+        return;
+    }
+
+    UIPasteboard.generalPasteboard.string = self.fullDump;
+    self.statusLabel.text = @"Complete unfiltered dump copied";
+}
+
+- (void)clearOutput {
+    self.fullDump = @"";
+    self.displayedDump = @"";
+    self.outputView.text = @"";
+    self.statusLabel.text = @"Output cleared";
+}
+
 @end
-static void UnityDumperInstall(void){ dispatch_async(dispatch_get_main_queue(),^{ UIApplication*app=UIApplication.sharedApplication; UIWindow*w=nil; if(@available(iOS 13.0,*)){ for(UIScene*s in app.connectedScenes) if(s.activationState==UISceneActivationStateForegroundActive&&[s isKindOfClass:UIWindowScene.class]) for(UIWindow*x in ((UIWindowScene*)s).windows) if(x.isKeyWindow){w=x;break;} } if(!w)w=app.keyWindow; if(!w)return; for(UIView*v in w.subviews)if([v isKindOfClass:UnityDumper.class])return; UnityDumper*u=[[UnityDumper alloc]initWithFrame:w.bounds]; u.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight; [w addSubview:u]; }); }
-__attribute__((constructor)) static void UnityDumperEntry(void){ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{UnityDumperInstall();}); }
+
+#pragma mark - Overlay installation
+
+static UnityDumper *UDOverlay;
+
+__attribute__((constructor))
+static void UDStart(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Retry briefly because UIKit may not have created a window yet.
+        // This does not bypass any device or process security controls.
+        __block int attempts = 0;
+
+        void (^tryInstall)(void) = ^{
+            if (UDOverlay) return;
+
+            UIWindow *window = nil;
+            for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+                if (![scene isKindOfClass:UIWindowScene.class]) continue;
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+
+                for (UIWindow *candidate in windowScene.windows) {
+                    if (candidate.isKeyWindow) {
+                        window = candidate;
+                        break;
+                    }
+                }
+                if (window) break;
+            }
+
+            if (!window) {
+                attempts++;
+                if (attempts < 30) {
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                        (int64_t)(0.5 * NSEC_PER_SEC)),
+                        dispatch_get_main_queue(), tryInstall);
+                }
+                return;
+            }
+
+            UDOverlay = [[UnityDumper alloc] init];
+            [UDOverlay install];
+            [window addSubview:UDOverlay];
+        };
+
+        tryInstall();
+    });
+}
