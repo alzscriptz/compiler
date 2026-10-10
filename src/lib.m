@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <dlfcn.h>
 #import <CoreGraphics/CoreGraphics.h>
 
 // Forward declarations for IL2CPP API
@@ -20,8 +21,7 @@ static void (*old_Update)(void *self) = NULL;
 // Hooked Update loop where ESP or runtime logic can be evaluated safely per-frame
 void hooked_Update(void *self) {
     if (self) {
-        // Ensure thread is attached to IL2CPP domain safely every frame or cached
-        // (Optional: Add your player iteration or ESP coordinate extraction logic here)
+        // Optional: Player iteration or ESP coordinate extraction logic here
     }
     
     // Call original game update loop
@@ -54,7 +54,7 @@ void *init_il2cpp_hook(void *arg) {
         il2cpp_thread_attach(domain);
     }
 
-    // Example: Resolve a class and method safely (e.g., targeting a gameplay manager class)
+    // Example: Resolve a class and method safely (e.g., targeting Character class)
     if (il2cpp_class_from_name) {
         Il2CppClass *characterClass = il2cpp_class_from_name("", "", "Character");
         if (characterClass) {
@@ -63,7 +63,7 @@ void *init_il2cpp_hook(void *arg) {
                 void *methodPointer = *(void **)((uintptr_t)updateMethod + sizeof(void *) * 2);
                 if (methodPointer) {
                     // Apply hook using your preferred hooking framework (e.g., Dobby / Fishhook)
-                    // DobbyHook(methodPointer, (void *is)hooked_Update, (void **)&old_Update);
+                    // DobbyHook(methodPointer, (void *)hooked_Update, (void **)&old_Update);
                 }
             }
         }
