@@ -45,20 +45,20 @@ void hooked_Update(void *self) {
 }
 
 void *init_il2cpp_hook(void *arg) {
-    writeLog("Tweak thread started, waiting for framework...");
+    writeLog(@"Tweak thread started, waiting for framework...");
     sleep(5); 
 
     void *il2cppHandle = dlopen("__Frameworks/UnityFramework.framework/UnityFramework", RTLD_NOLOAD);
     if (!il2cppHandle) {
-        writeLog("UnityFramework not found via RTLD_NOLOAD, trying global dlopen...");
+        writeLog(@"UnityFramework not found via RTLD_NOLOAD, trying global dlopen...");
         il2cppHandle = dlopen(NULL, RTLD_LAZY);
     }
 
     if (!il2cppHandle) {
-        writeLog("ERROR: Failed to open handle to UnityFramework/App binary!");
+        writeLog(@"ERROR: Failed to open handle to UnityFramework/App binary!");
         return NULL;
     }
-    writeLog("Successfully obtained handle to framework.");
+    writeLog(@"Successfully obtained handle to framework.");
 
     il2cpp_domain_get = dlsym(il2cppHandle, "il2cpp_domain_get");
     il2cpp_thread_attach = dlsym(il2cppHandle, "il2cpp_thread_attach");
@@ -66,26 +66,26 @@ void *init_il2cpp_hook(void *arg) {
     il2cpp_class_get_method_from_name = dlsym(il2cppHandle, "il2cpp_class_get_method_from_name");
 
     if (!il2cpp_domain_get || !il2cpp_thread_attach) {
-        writeLog("ERROR: Failed to resolve core IL2CPP functions!");
+        writeLog(@"ERROR: Failed to resolve core IL2CPP functions!");
         return NULL;
     }
 
     Il2CppDomain *domain = il2cpp_domain_get();
     il2cpp_thread_attach(domain);
-    writeLog("Successfully attached thread to IL2CPP domain.");
+    writeLog(@"Successfully attached thread to IL2CPP domain.");
 
     if (il2cpp_class_from_name) {
         Il2CppClass *characterClass = il2cpp_class_from_name("", "", "Character");
         if (characterClass) {
-            writeLog("SUCCESS: Found 'Character' class!");
+            writeLog(@"SUCCESS: Found 'Character' class!");
             MethodInfo *updateMethod = il2cpp_class_get_method_from_name(characterClass, "Update", 0);
             if (updateMethod) {
-                writeLog("SUCCESS: Found 'Update' method inside Character!");
+                writeLog(@"SUCCESS: Found 'Update' method inside Character!");
             } else {
-                writeLog("WARNING: Could not find 'Update' method in Character class.");
+                writeLog(@"WARNING: Could not find 'Update' method in Character class.");
             }
         } else {
-            writeLog("WARNING: Could not find 'Character' class in global-metadata.");
+            writeLog(@"WARNING: Could not find 'Character' class in global-metadata.");
         }
     }
 
