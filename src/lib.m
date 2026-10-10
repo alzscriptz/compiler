@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <dlfcn.h>
+#include <mach-o/dyld.h>
 
 void writeLog(NSString *format, ...) {
     @try {
@@ -28,89 +29,61 @@ void writeLog(NSString *format, ...) {
     } @catch (NSException *exception) {}
 }
 
-typedef struct Il2CppDomain Il2CppDomain;
-typedef struct Il2CppThread Il2CppThread;
-typedef struct Il2CppClass Il2CppClass;
-typedef struct MethodInfo MethodInfo;
+// Function pointer for the original game method you want to hook
+static void (*old_GameFunction)(void *self) = NULL;
 
-Il2CppDomain* (*il2cpp_domain_get)(void) = NULL;
-Il2CppThread* (*il2cpp_thread_attach)(Il2CppDomain* domain) = NULL;
-Il2CppClass* (*il2cpp_class_from_name)(const char* assemblyName, const char* namespaze, const char* typename) = NULL;
-MethodInfo* (*il2cpp_class_get_method_from_name)(Il2CppClass* klass, const char* name, int argsCount) = NULL;
-
-void *init_il2cpp_hook(void *arg) {
-    writeLog(@"Tweak thread started, waiting for UnityFramework...");
-    sleep(4); 
-
-    // Build the absolute path to UnityFramework inside the app bundle
-    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-    NSString *frameworkPath = [bundlePath stringByAppendingPathComponent:@"Frameworks/UnityFramework.framework/UnityFramework"];
+// Your custom hooked function (runs whenever the game calls the target function)
+void hooked_GameFunction(void *self) {
+    // Put your cheat logic here (e.g., modifying player stats, coordinates, etc.)
     
-    writeLog(@"Trying to load framework from path: %@", frameworkPath);
+    // Call the original game function so the game doesn't crash or freeze
+    if (old_GameFunction) {
+        old_GameFunction(self);
+    }
+}
 
-    void *il2cppHandle = dlopen([frameworkPath UTF8String], RTLD_LAZY);
-    if (!il2cppHandle) {
-        // Fallback if path differs slightly in LiveContainer
-        il2cppHandle = dlopen("UnityFramework", RTLD_LAZY);
+uintptr_t get_image_slide(const char *image_name) {
+    uint32_t count = _dyld_image_count();
+    for (uint32_t i = 0; i < count; i++) {
+        const char *name = _dyld_get_image_name(i);
+        if (name && strstr(name, image_name)) {
+            return _dyld_get_image_vmaddr_slide(i);
+        }
+    }
+    return 0;
+}
+
+void *init_cheat(void *arg) {
+    writeLog(@"Cheat thread started, waiting for binary slide...");
+    sleep(5); // Give LiveContainer time to load images
+
+    // Find the dynamic memory slide of UnityFramework
+    uintptr_t slide = get_image_slide("UnityFramework");
+    if (slide == 0) {
+        // Fallback to main executable if UnityFramework slide isn't found
+        slide = _dyld_get_image_vmaddr_slide(0);
     }
 
-    if (!il2cppHandle) {
-        writeLog(@"ERROR: Failed to open handle to UnityFramework!");
+    if (slide == 0) {
+        writeLog(@"ERROR: Could not find binary memory slide!");
         return NULL;
     }
-    writeLog(@"Successfully obtained REAL handle to UnityFramework: %p", il2cppHandle);
 
-    // Resolve symbols using the real framework handle
-    il2cpp_domain_get = dlsym(il2cppHandle, "il2cpp_domain_get");
-    if (il2cpp_domain_get) writeLog(@"SUCCESS: Resolved il2cpp_domain_get");
-    else writeLog(@"FAILED: il2cpp_domain_get");
+    writeLog(@"SUCCESS: Found binary slide at: %p", (void *)slide);
 
-    il2cpp_thread_attach = dlsym(il2cppHandle, "il2cpp_thread_attach");
-    if (il2cpp_thread_attach) writeLog(@"SUCCESS: Resolved il2cpp_thread_attach");
-    else writeLog(@"FAILED: il2cpp_thread_attach");
+    // TODO: Put the function offset (RVA) from your Il2CppDumper 'dump.cs' here!
+    // Example: If dump.cs says "// RVA: 0x1234567", change 0x1234567 to your actual offset.
+    uintptr_t functionRVA = 0x000000; // <-- REPLACE THIS WITH YOUR TARGET METHOD'S RVA
+    
+    if (functionRVA != 0x000000) {
+        uintptr_t targetAddress = slide + functionRVA;
+        writeLog(@"Target function resolved to absolute memory address: %p", (void *)targetAddress);
 
-    il2cpp_class_from_name = dlsym(il2cppHandle, "il2cpp_class_from_name");
-    if (il2cpp_class_from_name) writeLog(@"SUCCESS: Resolved il2cpp_class_from_name");
-    else writeLog(@"FAILED: il2cpp_class_from_name");
-
-    il2cpp_class_get_method_from_name = dlsym(il2cppHandle, "il2cpp_class_get_method_from_name");
-    if (il2cpp_class_get_method_from_name) writeLog(@"SUCCESS: Resolved il2cpp_class_get_method_from_name");
-    else writeLog(@"FAILED: il2cpp_class_get_method_from_name");
-
-    if (il2cpp_domain_get && il2cpp_thread_attach) {
-        Il2CppDomain *domain = NULL;
-        for (int i = 0; i < 10; i++) {
-            domain = il2cpp_domain_get();
-            if (domain) break;
-            sleep(1);
-        }
-
-        if (domain) {
-            il2cpp_thread_attach(domain);
-            writeLog(@"SUCCESS: Attached thread to IL2CPP domain!");
-        } else {
-            writeLog(@"ERROR: il2cpp_domain_get() returned NULL.");
-        }
-    }
-
-    if (il2cpp_class_from_name) {
-        Il2CppClass *characterClass = il2cpp_class_from_name("Assembly-CSharp", "", "Character");
-        if (!characterClass) {
-            characterClass = il2cpp_class_from_name("", "", "Character");
-        }
-
-        if (characterClass) {
-            writeLog(@"SUCCESS: Found 'Character' class in memory!");
-            
-            MethodInfo *updateMethod = il2cpp_class_get_method_from_name(characterClass, "Update", 0);
-            if (updateMethod) {
-                writeLog(@"SUCCESS: Found 'Update' method inside Character!");
-                void *nativeMethodPtr = *(void **)((uintptr_t)updateMethod + sizeof(void *) * 2);
-                writeLog(@"SUCCESS: Native function pointer resolved at: %p", nativeMethodPtr);
-            }
-        } else {
-            writeLog(@"NOTICE: 'Character' class not found via class_from_name.");
-        }
+        // If you are using Dobby hooking library, you would hook it like this:
+        // DobbyHook((void *)targetAddress, (void *)hooked_GameFunction, (void **)&old_GameFunction);
+        // writeLog(@"Successfully hooked target function!");
+    } else {
+        writeLog(@"NOTICE: Waiting for you to input the function RVA offset.");
     }
 
     return NULL;
@@ -118,5 +91,5 @@ void *init_il2cpp_hook(void *arg) {
 
 __attribute__((constructor)) static void entry() {
     pthread_t thread;
-    pthread_create(&thread, NULL, init_il2cpp_hook, NULL);
+    pthread_create(&thread, NULL, init_cheat, NULL);
 }
