@@ -4,6 +4,7 @@
    | | \\ ‎ ‎ ‎‎ ‎ ‎ ‎ ‎  ‎ ‎|| ‎ ‎ ‎ ‎ ‎ ‎||///‎ ‎ ‎ ‎ ‎ ‎ ‎ \‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎/‎ ‎ ‎ ‎ ‎‎||‎ ‎ \\‎ ‎||
    | |  \\‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ ‎ ||‎ ‎ ‎ ‎ ‎ ‎ ||////‎ ‎ ‎ ‎ ‎ ‎‎ ‎ \----/‎ ‎ ‎ ‎  ‎||‎ ‎ ‎ \\|| /-\|X
 */
+
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
@@ -92,7 +93,6 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 }
 
 - (void)buildUI {
-    // Main Panel
     self.panel = [[UIView alloc] initWithFrame:CGRectZero];
     self.panel.backgroundColor = self.panelColor;
     UIBlurEffect *panelEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
@@ -107,7 +107,6 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [self addSubview:self.panel];
     [self.panel sendSubviewToBack:panelGlass];
 
-    // Header
     self.header = [[UIView alloc] initWithFrame:CGRectZero];
     self.header.backgroundColor = [UIColor colorWithRed:0.035 green:0.06 blue:0.12 alpha:0.7];
     [self.panel addSubview:self.header];
@@ -124,14 +123,12 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [minimize addTarget:self action:@selector(minimizeUI) forControlEvents:UIControlEventTouchUpInside];
     [self.header addSubview:minimize];
 
-    // Target Address Label
     self.targetLabel = [self label:@"Target: Base + 0x25C36F" size:14 color:self.mutedColor];
     self.targetLabel.textAlignment = NSTextAlignmentCenter;
     [self.panel addSubview:self.targetLabel];
 
-    // Textbox for Value
     self.valueField = [[UITextField alloc] initWithFrame:CGRectZero];
-    self.valueField.placeholder = @"Enter value (e.g. 100 or hex)";
+    self.valueField.placeholder = @"Enter value (e.g. 100)";
     self.valueField.textColor = [UIColor whiteColor];
     self.valueField.tintColor = self.blue;
     self.valueField.font = [UIFont systemFontOfSize:14];
@@ -145,17 +142,14 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.valueField.returnKeyType = UIReturnKeyDone;
     [self.panel addSubview:self.valueField];
 
-    // Submit Button
     self.submitButton = [self button:@"Submit & Modify"];
     [self.submitButton addTarget:self action:@selector(submitValue) forControlEvents:UIControlEventTouchUpInside];
     [self.panel addSubview:self.submitButton];
 
-    // Status Label
     self.statusLabel = [self label:@"" size:12 color:self.mutedColor];
     self.statusLabel.textAlignment = NSTextAlignmentCenter;
     [self.panel addSubview:self.statusLabel];
 
-    // Minimized Floating Button
     self.miniButton = [self button:@"K1sUI"];
     self.miniButton.backgroundColor = [self.panelColor colorWithAlphaComponent:0.85];
     self.miniButton.layer.cornerRadius = 17;
@@ -173,7 +167,6 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     CGFloat H = CGRectGetHeight(self.bounds);
     if (W <= 0 || H <= 0) return;
 
-    // Compact panel dimensions optimized for single input
     CGFloat panelW = MIN(340.0, W - 32.0);
     CGFloat panelH = 250.0;
     self.panel.frame = CGRectMake((W - panelW) / 2.0, (H - panelH) / 2.0, panelW, panelH);
@@ -231,8 +224,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         return;
     }
 
-    // Get Mach-O Header Base Address
-    const struct mach_header_t *header = _dyld_get_image_header(0);
+    const struct mach_header *header = _dyld_get_image_header(0);
     if (!header) {
         self.statusLabel.textColor = [UIColor colorWithRed:1 green:0.32 blue:0.45 alpha:1];
         self.statusLabel.text = @"Failed to get base address.";
@@ -242,21 +234,17 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     uintptr_t baseAddress = (uintptr_t)header;
     uintptr_t targetAddress = baseAddress + 0x25C36F;
 
-    // Convert input text to integer value
     int val = [inputText intValue];
 
-    // Memory write with protection adjustment
-    kern_status_t status = KERN_SUCCESS;
+    kern_return_t status = KERN_SUCCESS;
     vm_size_t pageSize = sysconf(_SC_PAGESIZE);
     uintptr_t pageStart = targetAddress & ~(pageSize - 1);
 
     status = vm_protect(mach_task_self(), (vm_address_t)pageStart, pageSize, FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
 
     if (status == KERN_SUCCESS) {
-        // Write 4 bytes (modify according to your data type needs: int, float, etc.)
         *(int *)targetAddress = val;
         
-        // Restore memory protection
         vm_protect(mach_task_self(), (vm_address_t)pageStart, pageSize, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
 
         self.statusLabel.textColor = [UIColor colorWithRed:0.2 green:0.9 blue:0.4 alpha:1];
