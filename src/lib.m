@@ -1,45 +1,29 @@
 #import <Foundation/Foundation.h>
-#import <mach-o/dyld.h>
-#import <dlfcn.h>
 
-__attribute__((constructor)) static void init() {
-    @autoreleasepool {
-        // 1. Locate the app's Documents directory
-        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        NSString *documentsDirectory = [paths firstObject];
-        NSString *filePath = [documentsDirectory stringByAppendingPathComponent:@"rva_debug_dump.txt"];
-        
-        NSMutableString *output = [NSMutableString string];
-        [output appendString:@"=== iOS Binary & Slide Dump ===\n\n"];
-        
-        NSString *mainExecPath = [[NSBundle mainBundle] executablePath];
-        
-        // 2. Iterate through loaded Mach-O images to find UnityFramework or the main executable
-        uint32_t imageCount = _dyld_image_count();
-        for (uint32_t i = 0; i < imageCount; i++) {
-            const char *imageName = _dyld_get_image_name(i);
-            if (imageName) {
-                NSString *name = [NSString stringWithUTF8String:imageName];
-                // Target UnityFramework or the game's main binary
-                if ([name containsString:@"UnityFramework"] || [name isEqualToString:mainExecPath]) {
-                    intptr_t slide = _dyld_get_image_vmaddr_slide(i);
-                    const struct mach_header_64 *header = (const struct mach_header_64 *)_dyld_get_image_header(i);
-                    
-                    [output appendFormat:@"Image: %@\n", name];
-                    [output appendFormat:@"ASLR Slide: %p\n", (void *)slide];
-                    [output appendFormat:@"Header Address: %p\n\n", (void *)header];
-                }
-            }
-        }
-        
-        // 3. Write output to the Documents folder
-        NSError *error = nil;
-        [output writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:&error];
-        
-        if (error) {
-            NSLog(@"[RVA Dumper] Failed to write file: %@", error.localizedDescription);
-        } else {
-            NSLog(@"[RVA Dumper] Successfully wrote dump to %@", filePath);
-        }
-    }
+// Example structure mirroring NewGlobalStatusVO instance fields from the dump[span_11](start_span)[span_11](end_span)
+typedef struct {
+    char pad[0x3C];
+    int energy;             // 0x3C[span_12](start_span)[span_12](end_span)
+    char pad2[0x8C - 0x3C - 4];
+    int coin;               // 0xCC[span_13](start_span)[span_13](end_span)
+    int gem;                // 0xD0[span_14](start_span)[span_14](end_span)
+    char pad3[0x1D8 - 0xD0 - 4];
+    int tokens;             // 0x1D8[span_15](start_span)[span_15](end_span)
+    char pad4[0x200 - 0x1D8 - 4];
+    int skipTickets;        // 0x200[span_16](start_span)[span_16](end_span)
+} NewGlobalStatusVO_t;
+
+// Function to inject/modify player currencies at runtime
+void ModifyPlayerCurrencies(void *statusVOInstance) {
+    if (statusVOInstance == NULL) return;
+    
+    NewGlobalStatusVO_t *status = (NewGlobalStatusVO_t *)statusVOInstance;
+    
+    // Set unlimited/max resources
+    status->coin = 999999;
+    status->gem = 99999;
+    status->energy = 999;
+    status->skipTickets = 999;
+    
+    NSLog(@"[Mini Soccer Star Cheat] Currencies updated successfully!");
 }
