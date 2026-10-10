@@ -123,7 +123,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [minimize addTarget:self action:@selector(minimizeUI) forControlEvents:UIControlEventTouchUpInside];
     [self.header addSubview:minimize];
 
-    self.targetLabel = [self label:@"Target: Base + 0x55D58994" size:14 color:self.mutedColor];
+    self.targetLabel = [self label:@"Target: Unity + 0x55D58994" size:13 color:self.mutedColor];
     self.targetLabel.textAlignment = NSTextAlignmentCenter;
     [self.panel addSubview:self.targetLabel];
 
@@ -224,10 +224,23 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
         return;
     }
 
-    const struct mach_header *header = _dyld_get_image_header(0);
+    // Automatically locate UnityFramework or fall back to index 0
+    const struct mach_header *header = NULL;
+    uint32_t imageCount = _dyld_image_count();
+    for (uint32_t i = 0; i < imageCount; i++) {
+        const char *name = _dyld_get_image_name(i);
+        if (name && strstr(name, "UnityFramework")) {
+            header = _dyld_get_image_header(i);
+            break;
+        }
+    }
+    if (!header) {
+        header = _dyld_get_image_header(0);
+    }
+
     if (!header) {
         self.statusLabel.textColor = [UIColor colorWithRed:1 green:0.32 blue:0.45 alpha:1];
-        self.statusLabel.text = @"Failed to get base address.";
+        self.statusLabel.text = @"Failed to get binary base.";
         return;
     }
 
@@ -236,22 +249,23 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
 
     int val = [inputText intValue];
 
-    kern_return_t status = KERN_SUCCESS;
     vm_size_t pageSize = sysconf(_SC_PAGESIZE);
     uintptr_t pageStart = targetAddress & ~(pageSize - 1);
 
-    status = vm_protect(mach_task_self(), (vm_address_t)pageStart, pageSize, FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+    // Apply memory protection for writing
+    kern_return_t status = vm_protect(mach_task_self(), (vm_address_t)pageStart, pageSize, FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
 
     if (status == KERN_SUCCESS) {
         *(int *)targetAddress = val;
         
+        // Restore execution protection
         vm_protect(mach_task_self(), (vm_address_t)pageStart, pageSize, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
 
         self.statusLabel.textColor = [UIColor colorWithRed:0.2 green:0.9 blue:0.4 alpha:1];
         self.statusLabel.text = [NSString stringWithFormat:@"Successfully set to %d", val];
     } else {
         self.statusLabel.textColor = [UIColor colorWithRed:1 green:0.32 blue:0.45 alpha:1];
-        self.statusLabel.text = @"Memory write failed (vm_protect)";
+        self.statusLabel.text = [NSString stringWithFormat:@"vm_protect failed: %d", status];
     }
 }
 
