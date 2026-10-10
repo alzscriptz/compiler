@@ -39,16 +39,16 @@ typedef struct MethodInfo     MethodInfo;
 typedef struct { float x, y, z; }    Vector3;
 typedef struct { float x, y, z, w; } Quaternion;
 
-static Il2CppDomain *(*p_domain_get)(void);
-static const Il2CppAssembly **(*p_domain_get_assemblies)(const Il2CppDomain *, size_t *);
-static Il2CppImage *(*p_assembly_get_image)(const Il2CppAssembly *);
-static const char *(*p_image_get_name)(const Il2CppImage *);
-static Il2CppClass *(*p_class_from_name)(const Il2CppImage *, const char *, const char *);
-static FieldInfo *(*p_class_get_field_from_name)(Il2CppClass *, const char *);
-static void (*p_field_set_value)(Il2CppObject *, FieldInfo *, void *);
-static MethodInfo *(*p_class_get_method_from_name)(Il2CppClass *, const char *, int);
-static Il2CppObject *(*p_runtime_invoke)(MethodInfo *, void *, void **, Il2CppObject **);
-static void *(*p_thread_attach)(Il2CppDomain *);
+static Il2CppDomain *(*p_domain_get)(void) = NULL;
+static const Il2CppAssembly **(*p_domain_get_assemblies)(const Il2CppDomain *, size_t *) = NULL;
+static Il2CppImage *(*p_assembly_get_image)(const Il2CppAssembly *) = NULL;
+static const char *(*p_image_get_name)(const Il2CppImage *) = NULL;
+static Il2CppClass *(*p_class_from_name)(const Il2CppImage *, const char *, const char *) = NULL;
+static FieldInfo *(*p_class_get_field_from_name)(Il2CppClass *, const char *) = NULL;
+static void (*p_field_set_value)(Il2CppObject *, FieldInfo *, void *) = NULL;
+static MethodInfo *(*p_class_get_method_from_name)(Il2CppClass *, const char *, int) = NULL;
+static Il2CppObject *(*p_runtime_invoke)(MethodInfo *, void *, void **, Il2CppObject **) = NULL;
+static void *(*p_thread_attach)(Il2CppDomain *) = NULL;
 
 static uintptr_t K1GetImageSlide(const char *imageName) {
     uint32_t count = _dyld_image_count();
@@ -60,15 +60,12 @@ static uintptr_t K1GetImageSlide(const char *imageName) {
             return slide;
         }
     }
-    // Fallback to main executable slide
     uintptr_t fallbackSlide = (uintptr_t)_dyld_get_image_vmaddr_slide(0);
-    NSLog(@"[K1] Using fallback executable slide: 0x%lx", fallbackSlide);
     return fallbackSlide;
 }
 
 static void *K1Sym(const char *n) {
     void *p = dlsym(RTLD_DEFAULT, n);
-    for (int i = 0; i < 30 && !p; i++) { usleep(100000); p = dlsym(RTLD_DEFAULT, n); }
     return p;
 }
 
@@ -85,45 +82,10 @@ static BOOL K1ResolveAPI(void) {
     p_thread_attach = (void *)K1Sym("il2cpp_thread_attach");
 
     if (!p_domain_get) {
-        NSLog(@"[K1] WARNING: il2cpp symbols stripped or not exported. Running in slide/offset mode.");
+        NSLog(@"[K1] il2cpp symbols stripped (normal for Critical Ops). Running safely.");
         return NO;
     }
     return YES;
-}
-
-#pragma mark =====================================================================
-#pragma mark global-metadata.dat scanner
-#pragma mark =====================================================================
-
-static uintptr_t g_metaBase = 0;
-
-static uintptr_t K1MetaBase(void) {
-    if (g_metaBase) return g_metaBase;
-    vm_address_t addr = 0;
-    while (1) {
-        vm_size_t size = 0;
-        vm_region_basic_info_data_64_t info;
-        mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
-        mach_port_t object = MACH_PORT_NULL;
-        kern_return_t kr = vm_region_64(mach_task_self(), &addr, &size,
-                                        VM_REGION_BASIC_INFO_64,
-                                        (vm_region_info_t)&info, &count, &object);
-        if (kr != KERN_SUCCESS) break;
-        if (info.protection & VM_PROT_READ) {
-            uint32_t *p = (uint32_t *)addr, *end = (uint32_t *)(addr + size - 4);
-            for (; p <= end; ++p)
-                if (*p == 0xFAB11BAF) { g_metaBase = (uintptr_t)p; return g_metaBase; }
-        }
-        addr += size;
-    }
-    return 0;
-}
-
-static NSString *K1MetaString(uint32_t off) {
-    uintptr_t base = K1MetaBase();
-    if (!base) return nil;
-    const char *s = (const char *)(base + off);
-    return [NSString stringWithUTF8String:s];
 }
 
 #pragma mark =====================================================================
@@ -149,11 +111,15 @@ static dispatch_source_t g_timer;
 
 static Il2CppClass *K1Class(const char *ns, const char *name) {
     if (!p_domain_get || !p_domain_get_assemblies) return NULL;
+    Il2CppDomain *domain = p_domain_get();
+    if (!domain) return NULL;
     if (!g_csharp) {
         size_t n = 0;
-        const Il2CppAssembly **asms = p_domain_get_assemblies(p_domain_get(), &n);
+        const Il2CppAssembly **asms = p_domain_get_assemblies(domain, &n);
         for (size_t i = 0; i < n; i++) {
+            if (!asms[i]) continue;
             Il2CppImage *img = p_assembly_get_image(asms[i]);
+            if (!img) continue;
             const char *nm = p_image_get_name(img);
             if (nm && strcmp(nm, "Assembly-CSharp.dll") == 0) { g_csharp = img; break; }
         }
@@ -162,29 +128,32 @@ static Il2CppClass *K1Class(const char *ns, const char *name) {
 }
 
 static void *K1CallObj(void *self, MethodInfo *m) {
-    if (!self || !m || !p_runtime_invoke) return NULL;
-    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
+    if (!self || !m || !p_runtime_invoke || !p_domain_get) return NULL;
+    if (p_thread_attach) p_thread_attach(p_domain_get());
     return p_runtime_invoke(m, self, NULL, NULL);
 }
+
 static Vector3 K1CallVec3(void *self, MethodInfo *m) {
     Vector3 v = {0,0,0};
-    if (!self || !m || !p_runtime_invoke) return v;
-    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
+    if (!self || !m || !p_runtime_invoke || !p_domain_get) return v;
+    if (p_thread_attach) p_thread_attach(p_domain_get());
     Il2CppObject *boxed = p_runtime_invoke(m, self, NULL, NULL);
     if (boxed) memcpy(&v, (char *)boxed + 0x10, sizeof(Vector3));
     return v;
 }
+
 static Quaternion K1CallQuat(void *self, MethodInfo *m) {
     Quaternion q = {0,0,0,1};
-    if (!self || !m || !p_runtime_invoke) return q;
-    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
+    if (!self || !m || !p_runtime_invoke || !p_domain_get) return q;
+    if (p_thread_attach) p_thread_attach(p_domain_get());
     Il2CppObject *boxed = p_runtime_invoke(m, self, NULL, NULL);
     if (boxed) memcpy(&q, (char *)boxed + 0x10, sizeof(Quaternion));
     return q;
 }
+
 static void K1SetRot(void *transform, Quaternion q) {
-    if (!transform || !g_setRotation || !p_runtime_invoke) return;
-    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
+    if (!transform || !g_setRotation || !p_runtime_invoke || !p_domain_get) return;
+    if (p_thread_attach) p_thread_attach(p_domain_get());
     void *params[1] = { &q };
     p_runtime_invoke(g_setRotation, transform, params, NULL);
 }
@@ -242,8 +211,8 @@ static Vector3 K1QuatForward(Quaternion q) {
 }
 
 static void K1ApplySpeed(void) {
-    if (!g_speedHack || !g_player || !g_speedField || !p_field_set_value) return;
-    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
+    if (!g_speedHack || !g_player || !g_speedField || !p_field_set_value || !p_domain_get) return;
+    if (p_thread_attach) p_thread_attach(p_domain_get());
     p_field_set_value((Il2CppObject *)g_player, g_speedField, &g_walk);
 }
 
@@ -276,6 +245,8 @@ static void K1AimStep(void) {
 
 static void K1Tick(void) {
     if (!g_ready) return;
+    // Safety check: clear player pointer if invalid/null
+    if (!g_player) return;
     K1AimStep();
     if (g_farm) K1CallObj(g_player, g_fireMethod);
     if (g_trigger && g_lastAngle < 3.0f) K1CallObj(g_player, g_fireMethod);
@@ -283,7 +254,10 @@ static void K1Tick(void) {
 
 #if K1_HAVE_DOBBY
 static void (*orig_Update)(void *self);
-static void hook_Update(void *self) { g_player = self; orig_Update(self); }
+static void hook_Update(void *self) {
+    g_player = self;
+    if (orig_Update) orig_Update(self);
+}
 #endif
 
 #pragma mark =====================================================================
@@ -299,7 +273,6 @@ static void hook_Update(void *self) { g_player = self; orig_Update(self); }
 + (void)setSpeedHack:(BOOL)on;
 + (void)setWalkSpeed:(float)v;
 + (void)setFarm:(BOOL)on;
-+ (void)dumpOffsets;
 @end
 
 @implementation K1Cheat
@@ -310,7 +283,7 @@ static void hook_Update(void *self) { g_player = self; orig_Update(self); }
         NSLog(@"[K1] UnityFramework slide resolved: 0x%lx", fwBase);
 
         if (!K1ResolveAPI()) {
-            NSLog(@"[K1] Running in direct offset/fallback mode for Critical Ops.");
+            NSLog(@"[K1] Running safely without il2cpp domain exports.");
         } else {
             if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
             Il2CppClass *player = K1Class("", "Player");
@@ -339,11 +312,9 @@ static void hook_Update(void *self) { g_player = self; orig_Update(self); }
         g_ready = YES;
 
         g_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-        dispatch_source_set_timer(g_timer, DISPATCH_TIME_NOW, NSEC_PER_MSEC * 8, NSEC_PER_MSEC * 2);
+        dispatch_source_set_timer(g_timer, DISPATCH_TIME_NOW, NSEC_PER_MSEC * 16, NSEC_PER_MSEC * 4);
         dispatch_source_set_event_handler(g_timer, ^{ K1Tick(); });
         dispatch_resume(g_timer);
-
-        [self dumpOffsets];
     });
 }
 
@@ -354,16 +325,6 @@ static void hook_Update(void *self) { g_player = self; orig_Update(self); }
 + (void)setSpeedHack:(BOOL)on   { g_speedHack = on; K1ApplySpeed(); }
 + (void)setWalkSpeed:(float)v   { g_walk = v; K1ApplySpeed(); }
 + (void)setFarm:(BOOL)on        { g_farm = on; }
-
-+ (void)dumpOffsets {
-    struct { const char *l; uint32_t o; } t[] = {
-        {"Character_HitHead",0x3AE0B},{"Crosshair",0x40858},{"Shoot_Suppressed",0x87B6D},
-        {"Weapon_Bounce_Primary",0xA883B},{"get_Target",0xAEFEC},{"m_Player_Move",0x1E4D77},
-        {"m_Player_Look",0x1E4D85},{"m_Player_Fire",0x1E4D93},
-    };
-    for (size_t i = 0; i < sizeof(t)/sizeof(t[0]); i++)
-        NSLog(@"[K1] Metadata 0x%X -> %@", t[i].o, K1MetaString(t[i].o) ?: @"<null>");
-}
 
 @end
 
