@@ -164,7 +164,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     panelGlass.userInteractionEnabled = NO;
     panelGlass.tag = 988;
     [self.panel addSubview:panelGlass];
-    self.panel.layer.cornerRadius = 34.0;
+    self.panel.layer.cornerRadius = 17.0;
     self.panel.layer.borderWidth = 1.2;
     self.panel.layer.borderColor = [self.blue colorWithAlphaComponent:0.9].CGColor;
     self.panel.clipsToBounds = YES;
@@ -198,7 +198,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     appTitle.font = [UIFont boldSystemFontOfSize:22];
     [self.header addSubview:appTitle];
 
-    UILabel *subtitle = [self label:@"Discord link" size:12 color:self.mutedColor];
+    UILabel *subtitle = [self label:@"discord.gg/DKdAG9VTjh" size:12 color:self.mutedColor];
     subtitle.tag = 204;
     [self.header addSubview:subtitle];
 
@@ -248,7 +248,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.page.backgroundColor = [UIColor clearColor];
     [self.panel addSubview:self.page];
 
-    self.statusLabel = [self label:@"Ready" size:11 color:self.mutedColor];
+    self.statusLabel = [self label:@"" size:11 color:self.mutedColor];
     [self.panel addSubview:self.statusLabel];
 
     self.miniButton = [self button:@"â¦  K1sUI     â"];
@@ -299,7 +299,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     logo.frame = CGRectMake(14, (headerH - 44) / 2.0, 44, 44);
     logoIcon.frame = CGRectMake(9, 9, 26, 26);
     appTitle.frame = CGRectMake(70, 7, panelW - 150, 31);
-    subtitle.frame = CGRectMake(71, 39, panelW - 160, 17);
+    subtitle.frame = CGRectMake(71, 34, panelW - 160, 18);
     subtitle.font = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
     subtitle.lineBreakMode = NSLineBreakByTruncatingTail;
     minimize.frame = CGRectMake(panelW - 51, (headerH - 38) / 2.0, 38, 38);
