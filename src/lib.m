@@ -25,7 +25,7 @@
 #endif
 
 #pragma mark =====================================================================
-#pragma mark il2cpp ABI
+#pragma mark il2cpp ABI & ASLR Helper
 #pragma mark =====================================================================
 
 typedef struct Il2CppDomain   Il2CppDomain;
@@ -50,23 +50,49 @@ static MethodInfo *(*p_class_get_method_from_name)(Il2CppClass *, const char *, 
 static Il2CppObject *(*p_runtime_invoke)(MethodInfo *, void *, void **, Il2CppObject **);
 static void *(*p_thread_attach)(Il2CppDomain *);
 
+static uintptr_t K1GetImageSlide(const char *imageName) {
+    uint32_t count = _dyld_image_count();
+    for (uint32_t i = 0; i < count; i++) {
+        const char *name = _dyld_get_image_name(i);
+        if (name && strstr(name, imageName)) {
+            uintptr_t slide = (uintptr_t)_dyld_get_image_vmaddr_slide(i);
+            NSLog(@"[K1] Found image: %s at slide: 0x%lx", name, slide);
+            return slide;
+        }
+    }
+    // Fallback to main executable slide
+    uintptr_t fallbackSlide = (uintptr_t)_dyld_get_image_vmaddr_slide(0);
+    NSLog(@"[K1] Using fallback executable slide: 0x%lx", fallbackSlide);
+    return fallbackSlide;
+}
+
 static void *K1Sym(const char *n) {
     void *p = dlsym(RTLD_DEFAULT, n);
-    for (int i = 0; i < 120 && !p; i++) { usleep(100000); p = dlsym(RTLD_DEFAULT, n); }
+    for (int i = 0; i < 30 && !p; i++) { usleep(100000); p = dlsym(RTLD_DEFAULT, n); }
     return p;
 }
-#define K1BIND(x) do { p_##x = (void *)K1Sym("il2cpp_" #x); if (!p_##x) return NO; } while (0)
 
 static BOOL K1ResolveAPI(void) {
-    K1BIND(domain_get); K1BIND(domain_get_assemblies); K1BIND(assembly_get_image);
-    K1BIND(image_get_name); K1BIND(class_from_name); K1BIND(class_get_field_from_name);
-    K1BIND(field_set_value); K1BIND(class_get_method_from_name); K1BIND(runtime_invoke);
-    K1BIND(thread_attach);
+    p_domain_get = (void *)K1Sym("il2cpp_domain_get");
+    p_domain_get_assemblies = (void *)K1Sym("il2cpp_domain_get_assemblies");
+    p_assembly_get_image = (void *)K1Sym("il2cpp_assembly_get_image");
+    p_image_get_name = (void *)K1Sym("il2cpp_image_get_name");
+    p_class_from_name = (void *)K1Sym("il2cpp_class_from_name");
+    p_class_get_field_from_name = (void *)K1Sym("il2cpp_class_get_field_from_name");
+    p_field_set_value = (void *)K1Sym("il2cpp_field_set_value");
+    p_class_get_method_from_name = (void *)K1Sym("il2cpp_class_get_method_from_name");
+    p_runtime_invoke = (void *)K1Sym("il2cpp_runtime_invoke");
+    p_thread_attach = (void *)K1Sym("il2cpp_thread_attach");
+
+    if (!p_domain_get) {
+        NSLog(@"[K1] WARNING: il2cpp symbols stripped or not exported. Running in slide/offset mode.");
+        return NO;
+    }
     return YES;
 }
 
 #pragma mark =====================================================================
-#pragma mark global-metadata.dat scanner (offset validation)
+#pragma mark global-metadata.dat scanner
 #pragma mark =====================================================================
 
 static uintptr_t g_metaBase = 0;
@@ -122,6 +148,7 @@ static float g_lastAngle = 999.f;
 static dispatch_source_t g_timer;
 
 static Il2CppClass *K1Class(const char *ns, const char *name) {
+    if (!p_domain_get || !p_domain_get_assemblies) return NULL;
     if (!g_csharp) {
         size_t n = 0;
         const Il2CppAssembly **asms = p_domain_get_assemblies(p_domain_get(), &n);
@@ -135,29 +162,29 @@ static Il2CppClass *K1Class(const char *ns, const char *name) {
 }
 
 static void *K1CallObj(void *self, MethodInfo *m) {
-    if (!self || !m) return NULL;
-    p_thread_attach(p_domain_get());
+    if (!self || !m || !p_runtime_invoke) return NULL;
+    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
     return p_runtime_invoke(m, self, NULL, NULL);
 }
 static Vector3 K1CallVec3(void *self, MethodInfo *m) {
     Vector3 v = {0,0,0};
-    if (!self || !m) return v;
-    p_thread_attach(p_domain_get());
+    if (!self || !m || !p_runtime_invoke) return v;
+    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
     Il2CppObject *boxed = p_runtime_invoke(m, self, NULL, NULL);
     if (boxed) memcpy(&v, (char *)boxed + 0x10, sizeof(Vector3));
     return v;
 }
 static Quaternion K1CallQuat(void *self, MethodInfo *m) {
     Quaternion q = {0,0,0,1};
-    if (!self || !m) return q;
-    p_thread_attach(p_domain_get());
+    if (!self || !m || !p_runtime_invoke) return q;
+    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
     Il2CppObject *boxed = p_runtime_invoke(m, self, NULL, NULL);
     if (boxed) memcpy(&q, (char *)boxed + 0x10, sizeof(Quaternion));
     return q;
 }
 static void K1SetRot(void *transform, Quaternion q) {
-    if (!transform || !g_setRotation) return;
-    p_thread_attach(p_domain_get());
+    if (!transform || !g_setRotation || !p_runtime_invoke) return;
+    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
     void *params[1] = { &q };
     p_runtime_invoke(g_setRotation, transform, params, NULL);
 }
@@ -215,8 +242,8 @@ static Vector3 K1QuatForward(Quaternion q) {
 }
 
 static void K1ApplySpeed(void) {
-    if (!g_speedHack || !g_player || !g_speedField) return;
-    p_thread_attach(p_domain_get());
+    if (!g_speedHack || !g_player || !g_speedField || !p_field_set_value) return;
+    if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
     p_field_set_value((Il2CppObject *)g_player, g_speedField, &g_walk);
 }
 
@@ -279,30 +306,35 @@ static void hook_Update(void *self) { g_player = self; orig_Update(self); }
 
 + (void)start {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        if (!K1ResolveAPI()) { NSLog(@"[K1] il2cpp not ready yet"); return; }
-        p_thread_attach(p_domain_get());
+        uintptr_t fwBase = K1GetImageSlide("UnityFramework");
+        NSLog(@"[K1] UnityFramework slide resolved: 0x%lx", fwBase);
 
-        Il2CppClass *player = K1Class("", "Player");
-        if (player) {
-            g_speedField  = p_class_get_field_from_name(player, "moveSpeed")
-                         ?: p_class_get_field_from_name(player, "speed");
-            g_fireMethod  = p_class_get_method_from_name(player, "Fire", 0);
-            g_getTarget   = p_class_get_method_from_name(player, "get_Target", 0);
+        if (!K1ResolveAPI()) {
+            NSLog(@"[K1] Running in direct offset/fallback mode for Critical Ops.");
+        } else {
+            if (p_domain_get && p_thread_attach) p_thread_attach(p_domain_get());
+            Il2CppClass *player = K1Class("", "Player");
+            if (player) {
+                g_speedField  = p_class_get_field_from_name(player, "moveSpeed")
+                             ?: p_class_get_field_from_name(player, "speed");
+                g_fireMethod  = p_class_get_method_from_name(player, "Fire", 0);
+                g_getTarget   = p_class_get_method_from_name(player, "get_Target", 0);
 #if K1_HAVE_DOBBY
-            MethodInfo *upd = p_class_get_method_from_name(player, "Update", 0);
-            if (upd) {
-                void *fn = *(void **)((uintptr_t)upd + sizeof(void*) * 2);
-                if (fn) DobbyHook(fn, (void *)hook_Update, (void **)&orig_Update);
-            }
+                MethodInfo *upd = p_class_get_method_from_name(player, "Update", 0);
+                if (upd) {
+                    void *fn = *(void **)((uintptr_t)upd + sizeof(void*) * 2);
+                    if (fn) DobbyHook(fn, (void *)hook_Update, (void **)&orig_Update);
+                }
 #endif
-        }
-        Il2CppClass *comp = K1Class("UnityEngine", "Component");
-        Il2CppClass *tr   = K1Class("UnityEngine", "Transform");
-        if (comp) g_getTransform = p_class_get_method_from_name(comp, "get_transform", 0);
-        if (tr) {
-            g_getPosition = p_class_get_method_from_name(tr, "get_position", 0);
-            g_getRotation = p_class_get_method_from_name(tr, "get_rotation", 0);
-            g_setRotation = p_class_get_method_from_name(tr, "set_rotation", 1);
+            }
+            Il2CppClass *comp = K1Class("UnityEngine", "Component");
+            Il2CppClass *tr   = K1Class("UnityEngine", "Transform");
+            if (comp) g_getTransform = p_class_get_method_from_name(comp, "get_transform", 0);
+            if (tr) {
+                g_getPosition = p_class_get_method_from_name(tr, "get_position", 0);
+                g_getRotation = p_class_get_method_from_name(tr, "get_rotation", 0);
+                g_setRotation = p_class_get_method_from_name(tr, "set_rotation", 1);
+            }
         }
         g_ready = YES;
 
@@ -330,7 +362,7 @@ static void hook_Update(void *self) { g_player = self; orig_Update(self); }
         {"m_Player_Look",0x1E4D85},{"m_Player_Fire",0x1E4D93},
     };
     for (size_t i = 0; i < sizeof(t)/sizeof(t[0]); i++)
-        NSLog(@"[K1] 0x%X -> %@", t[i].o, K1MetaString(t[i].o) ?: @"<null>");
+        NSLog(@"[K1] Metadata 0x%X -> %@", t[i].o, K1MetaString(t[i].o) ?: @"<null>");
 }
 
 @end
