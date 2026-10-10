@@ -123,7 +123,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [minimize addTarget:self action:@selector(minimizeUI) forControlEvents:UIControlEventTouchUpInside];
     [self.header addSubview:minimize];
 
-    self.targetLabel = [self label:@"Target: Base + 0x25C36F" size:14 color:self.mutedColor];
+    self.targetLabel = [self label:@"Target: Base + 0x55D58994" size:14 color:self.mutedColor];
     self.targetLabel.textAlignment = NSTextAlignmentCenter;
     [self.panel addSubview:self.targetLabel];
 
@@ -232,7 +232,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     }
 
     uintptr_t baseAddress = (uintptr_t)header;
-    uintptr_t targetAddress = baseAddress + 0x25C36F;
+    uintptr_t targetAddress = baseAddress + 0x55D58994;
 
     int val = [inputText intValue];
 
