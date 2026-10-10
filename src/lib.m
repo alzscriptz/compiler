@@ -647,7 +647,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.configNameField.returnKeyType = UIReturnKeyDone;
     [self.page addSubview:self.configNameField];
 
-    UIButton *create = [self button:@"ï¼  Create"];
+    UIButton *create = [self button:@"Create"];
     create.tag = 732;
     create.backgroundColor = self.blue;
     [create addTarget:self action:@selector(createConfig) forControlEvents:UIControlEventTouchUpInside];
