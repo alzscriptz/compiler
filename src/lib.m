@@ -409,6 +409,13 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     UILabel *l=[self label:t size:14 color:[UIColor whiteColor]]; l.tag=1001; [c addSubview:l];
 }
 
+// Returns the first toggle/slider inside a card (NOT self, avoids the viewWithTag receiver collision).
+- (UIView *)controlIn:(UIView *)card {
+    for (UIView *v in card.subviews)
+        if ([v isKindOfClass:[UISwitch class]] || [v isKindOfClass:[UISlider class]]) return v;
+    return nil;
+}
+
 - (instancetype)initWithFrame:(CGRect)frame {
     self=[super initWithFrame:frame]; if(!self) return nil;
     self.backgroundColor=[UIColor clearColor]; self.opaque=NO;
@@ -535,10 +542,10 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
             if(isSlider){
                 t.frame=CGRectMake(16,10,W-92,25);
                 UILabel *v=[c viewWithTag:1002]; v.frame=CGRectMake(W-68,10,48,25);
-                UISlider *s=(UISlider *)[c viewWithTag:c.tag]; s.frame=CGRectMake(14,48,W-28,30);
+                UISlider *s=(UISlider *)[self controlIn:c]; s.frame=CGRectMake(14,48,W-28,30);
             } else {
                 t.frame=CGRectMake(17,0,MAX(80,W-104),h);
-                UISwitch *s=(UISwitch *)[c viewWithTag:c.tag];
+                UISwitch *s=(UISwitch *)[self controlIn:c];
                 s.onTintColor=self.blue; s.thumbTintColor=[UIColor whiteColor];
                 s.backgroundColor=[UIColor colorWithWhite:0.55 alpha:0.30]; s.layer.cornerRadius=16;
                 s.frame=CGRectMake(W-67,(h-31)/2,51,31);
@@ -634,20 +641,20 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [self.page addSubview:self.mainScroll];
 
     UIView *aim=[self toggleCard:@"Aimbot" tag:710];
-    self.aimSwitch=(UISwitch *)[aim viewWithTag:710];
+    self.aimSwitch=(UISwitch *)[self controlIn:aim];
     UIView *trig=[self toggleCard:@"Trigger Bot" tag:711];
-    self.triggerSwitch=(UISwitch *)[trig viewWithTag:711];
+    self.triggerSwitch=(UISwitch *)[self controlIn:trig];
     UIView *spd=[self toggleCard:@"Speed Hack" tag:712];
-    self.speedSwitch=(UISwitch *)[spd viewWithTag:712];
+    self.speedSwitch=(UISwitch *)[self controlIn:spd];
     UIView *farm=[self toggleCard:@"Auto Farm" tag:713];
-    self.farmSwitch=(UISwitch *)[farm viewWithTag:713];
+    self.farmSwitch=(UISwitch *)[self controlIn:farm];
 
     UIView *fov=[self sliderCard:@"Aim FOV" tag:720 min:5 max:180];
-    self.fovSlider=(UISlider *)[fov viewWithTag:720]; self.fovValue=(UILabel *)[fov viewWithTag:1002];
+    self.fovSlider=(UISlider *)[self controlIn:fov]; self.fovValue=(UILabel *)[fov viewWithTag:1002];
     UIView *sm=[self sliderCard:@"Aim Smoothing" tag:721 min:1 max:20];
-    self.smoothSlider=(UISlider *)[sm viewWithTag:721]; self.smoothValue=(UILabel *)[sm viewWithTag:1002];
+    self.smoothSlider=(UISlider *)[self controlIn:sm]; self.smoothValue=(UILabel *)[sm viewWithTag:1002];
     UIView *sv=[self sliderCard:@"Walk Speed" tag:722 min:16 max:200];
-    self.speedSlider=(UISlider *)[sv viewWithTag:722]; self.speedValue=(UILabel *)[sv viewWithTag:1002];
+    self.speedSlider=(UISlider *)[self controlIn:sv]; self.speedValue=(UILabel *)[sv viewWithTag:1002];
 
     UIView *reset=[self card]; reset.tag=730;
     [self addCardTitle:@"Reset All Settings" toCard:reset];
@@ -830,7 +837,7 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     [dc addTarget:self action:@selector(copyDiscordLink) forControlEvents:UIControlEventTouchUpInside];
     UILabel *t=[self label:@"Discord" size:14 color:[UIColor whiteColor]]; t.tag=1001; [dc addSubview:t];
     UILabel *st=[self label:@"Tap to copy invite link" size:11 color:self.mutedColor]; st.tag=1002; [dc addSubview:st];
-    UIImageView *ci=[[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"doc.on.doc"]];
+    UIImageView *ci=[[UIImageView alloc] initWithImage:[UIImage imageNamed:@"doc.on.doc"]];
     ci.tintColor=self.mutedColor; ci.contentMode=UIViewContentModeScaleAspectFit; ci.tag=1003; [dc addSubview:ci];
     [self.page addSubview:dc];
 }
