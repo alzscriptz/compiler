@@ -253,9 +253,9 @@ typedef NS_ENUM(NSInteger, K1MiniPosition) {
     self.statusLabel.hidden = YES;
     [self.panel addSubview:self.statusLabel];
 
-    self.miniButton = [self button:@"â¦  K1sUI     â"];
+    self.miniButton = [self button:@"K1sUI"];
     self.miniButton.backgroundColor = [self.panelColor colorWithAlphaComponent:0.65];
-    self.miniButton.layer.cornerRadius = 20;
+    self.miniButton.layer.cornerRadius = 17;
     self.miniButton.layer.borderColor = self.blue.CGColor;
     self.miniButton.hidden = YES;
     [self.miniButton addTarget:self action:@selector(showUI) forControlEvents:UIControlEventTouchUpInside];
